@@ -1,4 +1,4 @@
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3333/api';
+const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.200.27:3333/api';
 
 export class ApiError extends Error {
   constructor(message, status) {
@@ -27,3 +27,4 @@ export async function api(path, token, options = {}) {
 }
 
 export { API_URL };
+

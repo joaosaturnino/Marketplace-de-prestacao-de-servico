@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { api, API_URL } from './src/api';
 
 const money = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -7,7 +8,7 @@ const roles = { CLIENTE: 'Cliente', PRESTADOR: 'Prestador', ADMIN: 'Admin' };
 const tabs = { CLIENTE: ['Servicos', 'Pedidos', 'Pagamentos', 'Planos'], PRESTADOR: ['Servicos', 'Pedidos', 'Financeiro', 'Saques', 'Planos'], ADMIN: ['Resumo', 'Operacao', 'Financeiro', 'Saques'] };
 const initialData = { services: [], categories: [], requests: [], plans: { plans: [], subscription: null, usage: {} }, payout: { account: null, balance: {}, withdrawals: [] }, admin: { overview: null, requests: [], transactions: [], withdrawals: [] } };
 
-export default function App() {
+function MainApp() {
   const [session, setSession] = useState(null);
   const [tab, setTab] = useState('Servicos');
   const [data, setData] = useState(initialData);
@@ -199,6 +200,10 @@ function unique(rows) { return Array.from(new Map(rows.map((r) => [r.id, r])).va
 function date(v) { return v ? new Date(v).toLocaleDateString('pt-BR') : 'Nao agendada'; }
 function time(v) { return v ? new Date(v).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '-'; }
 function payment(v) { return ({ PIX: 'PIX', CARTAO_CREDITO: 'Cartao credito', CARTAO_DEBITO: 'Cartao debito', DINHEIRO: 'Dinheiro', CONTA_BANCARIA: 'Conta bancaria' }[v] || v || '-'); }
+export default function App() {
+  return <SafeAreaProvider><MainApp /></SafeAreaProvider>;
+}
+
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#f3f6f8' },
   auth: { padding: 22, gap: 16 },
@@ -256,3 +261,4 @@ const styles = StyleSheet.create({
   bubbleName: { fontWeight: '900', color: '#18212f' },
   bubbleDate: { color: '#667587', fontSize: 11 }
 });
+
