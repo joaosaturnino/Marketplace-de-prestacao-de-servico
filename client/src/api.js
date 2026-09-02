@@ -1,4 +1,6 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3333/api';
+const fallbackHost = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+const fallbackProtocol = typeof window !== 'undefined' ? window.location.protocol : 'http:';
+const API_URL = import.meta.env.VITE_API_URL || `${fallbackProtocol}//${fallbackHost}:3333/api`;
 
 export class ApiError extends Error {
   constructor(message, status) {

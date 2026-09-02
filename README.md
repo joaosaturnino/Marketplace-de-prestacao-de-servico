@@ -125,12 +125,13 @@ npm run start --workspace server
 4. Em outro terminal, rode o Expo apontando para a API do computador:
 
 ```powershell
-$env:EXPO_PUBLIC_API_URL="http://SEU_IP_LOCAL:3333/api"
+$env:EXPO_PUBLIC_WEB_URL="http://SEU_IP_LOCAL:4173"
 npm run mobile
 ```
 
 5. Abra o aplicativo Expo Go no celular e escaneie o QR Code exibido no terminal.
 
-No emulador Android, normalmente `http://10.0.2.2:3333/api` funciona melhor. No celular fisico, `localhost` nao funciona porque aponta para o proprio celular; use o IP do computador.
+No celular fisico, `localhost` nao funciona porque aponta para o proprio celular; use o IP do computador. A versao mobile abre a propria interface web responsiva dentro do Expo Go, entao ela fica fiel ao sistema web.
 
 Observacao: o script mobile usa a porta `8082` para evitar conflito com outros processos que costumam ocupar a `8081`. Se quiser trocar, edite `mobile/package.json` no script `start`.
+
