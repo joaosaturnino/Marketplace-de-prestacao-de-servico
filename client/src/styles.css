@@ -1625,3 +1625,125 @@ th {
     min-width: 96px;
   }
 }
+
+@media (max-width: 640px) {
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+
+  body {
+    overflow-x: hidden;
+  }
+
+  .auth-shell,
+  .app-shell {
+    min-height: 100dvh;
+  }
+
+  .auth-panel {
+    padding: 54px 18px 20px;
+  }
+
+  .auth-card {
+    width: calc(100% - 20px);
+    padding: 18px;
+  }
+
+  .app-shell {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    gap: 12px;
+    padding: 12px 14px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .brand {
+    min-height: 40px;
+  }
+
+  .brand strong {
+    font-size: 1rem;
+  }
+
+  .brand span {
+    font-size: 0.68rem;
+  }
+
+  .mobile-tabs {
+    width: 100%;
+    margin-top: 2px;
+    padding-bottom: 4px;
+  }
+
+  .mobile-tabs button {
+    min-height: 38px;
+    padding: 0 10px;
+    font-size: 0.8rem;
+    white-space: nowrap;
+  }
+
+  .content {
+    padding: 14px;
+  }
+
+  .page-header {
+    margin-bottom: 14px;
+  }
+
+  .page-header h2 {
+    font-size: 1.34rem;
+    line-height: 1.2;
+  }
+
+  .page-header p {
+    font-size: 0.92rem;
+  }
+
+  .toolbar,
+  .card,
+  .panel,
+  .metric,
+  .finance-row,
+  .user-management-card,
+  .withdrawal-card,
+  .plan-card,
+  .service-management-row,
+  .list-item {
+    padding: 14px;
+  }
+
+  .finance-row,
+  .request-row,
+  .card-top,
+  .list-item,
+  .service-management-row,
+  .user-card-head,
+  .modal-head,
+  .row-actions,
+  .card-actions,
+  .section-heading {
+    gap: 12px;
+  }
+
+  .modal-backdrop {
+    place-items: end center;
+    padding: 12px;
+  }
+
+  .modal {
+    width: 100%;
+    max-height: calc(100dvh - 24px);
+    overflow: auto;
+  }
+
+  h1 {
+    font-size: clamp(2rem, 12vw, 3.1rem);
+    line-height: 1;
+  }
+}
