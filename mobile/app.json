@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "ServicosPro",
+    "slug": "servicospro-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0f766e"
+      }
+    },
+    "extra": {
+      "apiUrl": "http://localhost:3333/api"
+    }
+  }
+}

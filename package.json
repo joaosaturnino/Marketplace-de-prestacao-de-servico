@@ -7,11 +7,13 @@
     "dev": "concurrently \"npm run dev --workspace server\" \"npm run dev --workspace client\"",
     "build": "npm run build --workspace client",
     "start": "npm run start --workspace server",
-    "db:init": "npm run db:init --workspace server"
+    "db:init": "npm run db:init --workspace server",
+    "mobile": "npm run start --workspace mobile"
   },
   "workspaces": [
     "client",
-    "server"
+    "server",
+    "mobile"
   ],
   "devDependencies": {
     "concurrently": "^9.2.1"

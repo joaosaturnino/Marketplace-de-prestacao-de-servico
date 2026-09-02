@@ -97,3 +97,38 @@ Apos `npm run db:init`, estes usuarios ficam disponiveis:
 - Prestador: `prestador@servicos.local` / `prestador123`
 
 O cliente de teste inicia no plano Cliente Gratuito e o prestador de teste inicia no plano Profissional para demonstrar limites, taxas, pagamentos e receita recorrente no painel administrativo.
+
+## App mobile com Expo Go
+
+A versao mobile fica na pasta `mobile` e usa a mesma API Node/MySQL do sistema web.
+
+1. Instale as dependencias, incluindo o workspace mobile:
+
+```bash
+npm install
+```
+
+2. Descubra o IP local do computador na mesma rede do celular:
+
+```bash
+ipconfig
+```
+
+Use o IPv4 da sua rede Wi-Fi. Exemplo: `192.168.1.25`.
+
+3. Inicie a API:
+
+```bash
+npm run start --workspace server
+```
+
+4. Em outro terminal, rode o Expo apontando para a API do computador:
+
+```powershell
+$env:EXPO_PUBLIC_API_URL="http://SEU_IP_LOCAL:3333/api"
+npm run mobile
+```
+
+5. Abra o aplicativo Expo Go no celular e escaneie o QR Code exibido no terminal.
+
+No emulador Android, normalmente `http://10.0.2.2:3333/api` funciona melhor. No celular fisico, `localhost` nao funciona porque aponta para o proprio celular; use o IP do computador.
