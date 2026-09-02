@@ -132,3 +132,5 @@ npm run mobile
 5. Abra o aplicativo Expo Go no celular e escaneie o QR Code exibido no terminal.
 
 No emulador Android, normalmente `http://10.0.2.2:3333/api` funciona melhor. No celular fisico, `localhost` nao funciona porque aponta para o proprio celular; use o IP do computador.
+
+Observacao: o script mobile usa a porta `8082` para evitar conflito com outros processos que costumam ocupar a `8081`. Se quiser trocar, edite `mobile/package.json` no script `start`.
