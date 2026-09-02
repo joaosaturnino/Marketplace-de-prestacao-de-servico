@@ -14,7 +14,7 @@ import {
   View
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import { api, API_URL } from './src/api';
+import { api } from './src/api';
 
 const money = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -344,10 +344,29 @@ export default function App() {
             <Button variant="primary" disabled={loading} onPress={login}>{loading ? 'Aguarde...' : authMode === 'login' ? 'Entrar' : 'Criar conta'}</Button>
           </Card>
 
-          <Card><Text style={s.cardTitle}>Contas de teste</Text><View style={s.chips}><Button variant="soft" onPress={() => demo('cliente@servicos.local', 'cliente123')}>Cliente</Button><Button variant="soft" onPress={() => demo('prestador@servicos.local', 'prestador123')}>Prestador</Button><Button variant="soft" onPress={() => demo('admin@servicos.local', 'admin123')}>Admin</Button></View><Text style={s.small}>API: {API_URL}</Text></Card>
+          <Card><Text style={s.cardTitle}>Contas de teste</Text><View style={s.chips}><Button variant="soft" onPress={() => demo('cliente@servicos.local', 'cliente123')}>Cliente</Button><Button variant="soft" onPress={() => demo('prestador@servicos.local', 'prestador123')}>Prestador</Button><Button variant="soft" onPress={() => demo('admin@servicos.local', 'admin123')}>Admin</Button></View></Card>
           <Message />
         </ScrollView>
       </KeyboardAvoidingView>
+    );
+  }
+
+  function BottomNav({ items }) {
+    return (
+      <View style={s.bottomNavWrap}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.bottomNav}>
+          {items.map(([id, title]) => {
+            const active = view === id;
+            const code = title.slice(0, 2).toUpperCase();
+            return (
+              <Pressable key={id} onPress={() => setView(id)} style={[s.bottomItem, active && s.bottomItemActive]}>
+                <Text style={[s.bottomCode, active && s.bottomCodeActive]}>{code}</Text>
+                <Text numberOfLines={1} style={[s.bottomText, active && s.bottomTextActive]}>{title}</Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
     );
   }
 
@@ -355,19 +374,18 @@ export default function App() {
     const items = nav[user.role] || [];
     const activeLabel = items.find(([id]) => id === view)?.[1] || 'Painel';
     return (
-      <>
+      <View style={s.screen}>
         <View style={s.header}>
           <View style={s.fill}><Text style={s.appName}>ServicosPro</Text><Text style={s.small}>{roles[user.role]} - {activeLabel}</Text></View>
           <View style={s.headerButtons}><Button variant="ghost" onPress={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? 'Claro' : 'Escuro'}</Button><Button variant="danger" onPress={() => { setUser(null); setToken(null); setData({}); }}>Sair</Button></View>
         </View>
-        <View style={s.tabsWrap}><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.tabs}>{items.map(([id, title]) => <Chip key={id} active={view === id} onPress={() => setView(id)}>{title}</Chip>)}</ScrollView></View>
         <Message />
-        {loading ? <View style={s.loading}><ActivityIndicator color={c.primary} size="large" /><Text style={s.muted}>Carregando dados...</Text></View> : <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>{content()}</ScrollView>}
+        {loading ? <View style={s.loading}><ActivityIndicator color={c.primary} size="large" /><Text style={s.muted}>Carregando dados...</Text></View> : <ScrollView style={s.main} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>{content()}</ScrollView>}
+        <BottomNav items={items} />
         <RequestModal />
-      </>
+      </View>
     );
   }
-
 
   function content() {
     if (user.role === 'CLIENTE') {
@@ -507,13 +525,21 @@ function makeStyles(c) {
   return StyleSheet.create({
     flex: { flex: 1 },
     safe: { flex: 1, backgroundColor: c.bg },
+    screen: { flex: 1, backgroundColor: c.bg },
+    main: { flex: 1, backgroundColor: c.bg },
     authScroll: { padding: 14, gap: 12, paddingBottom: 28, backgroundColor: c.bg },
-    content: { padding: 14, paddingBottom: 34, backgroundColor: c.bg },
+    content: { padding: 14, paddingBottom: 22, backgroundColor: c.bg },
     header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: c.surface, borderBottomWidth: 1, borderBottomColor: c.border },
     headerButtons: { flexDirection: 'row', gap: 8 },
     appName: { color: c.text, fontSize: 18, fontWeight: '900' },
-    tabsWrap: { backgroundColor: c.surface, borderBottomWidth: 1, borderBottomColor: c.border },
-    tabs: { paddingHorizontal: 14, paddingVertical: 10, gap: 8 },
+    bottomNavWrap: { backgroundColor: c.surface, borderTopWidth: 1, borderTopColor: c.border },
+    bottomNav: { paddingHorizontal: 10, paddingTop: 8, paddingBottom: 10, gap: 8 },
+    bottomItem: { width: 82, minHeight: 54, borderRadius: 8, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface, alignItems: 'center', justifyContent: 'center', gap: 3, paddingHorizontal: 6 },
+    bottomItemActive: { borderColor: c.primary, backgroundColor: c.primarySoft },
+    bottomCode: { color: c.muted, fontSize: 12, fontWeight: '900' },
+    bottomCodeActive: { color: c.primary },
+    bottomText: { color: c.muted, fontSize: 11, fontWeight: '800', maxWidth: 70 },
+    bottomTextActive: { color: c.primary },
     stack: { gap: 12 },
     hero: { gap: 12 },
     rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
