@@ -1,0 +1,20 @@
+{
+  "name": "prestacao-servicos-client",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npm run build && npm run preview",
+    "dev:vite": "vite --host 0.0.0.0 --configLoader native",
+    "build": "vite build --configLoader native",
+    "preview": "vite preview --host 0.0.0.0 --configLoader native"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^5.0.2",
+    "vite": "^7.1.4",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "lucide-react": "^0.542.0"
+  },
+  "devDependencies": {}
+}

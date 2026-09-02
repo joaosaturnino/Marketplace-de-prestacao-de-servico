@@ -1,0 +1,19 @@
+{
+  "name": "prestacao-servicos",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently \"npm run dev --workspace server\" \"npm run dev --workspace client\"",
+    "build": "npm run build --workspace client",
+    "start": "npm run start --workspace server",
+    "db:init": "npm run db:init --workspace server"
+  },
+  "workspaces": [
+    "client",
+    "server"
+  ],
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
