@@ -396,6 +396,49 @@ router.patch('/:id/status', authenticate, authorize('CLIENTE', 'PRESTADOR', 'ADM
   }
 });
 
+router.delete('/:id', authenticate, authorize('CLIENTE', 'PRESTADOR'), async (req, res, next) => {
+  const connection = await pool.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    const ownerField = req.user.role === 'CLIENTE' ? 'client_id' : 'provider_id';
+    const [requests] = await connection.execute(
+      `SELECT id, status
+      FROM service_requests
+      WHERE id = ? AND ${ownerField} = ?
+      LIMIT 1
+      FOR UPDATE`,
+      [req.params.id, req.user.id]
+    );
+    const request = requests[0];
+
+    if (!request) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Solicitacao nao encontrada.' });
+    }
+
+    if (!['CONCLUIDO', 'CANCELADO'].includes(request.status)) {
+      await connection.rollback();
+      return res.status(409).json({ message: 'Somente solicitacoes concluidas ou canceladas podem ser excluidas.' });
+    }
+
+    await connection.execute('DELETE FROM service_request_messages WHERE request_id = ?', [request.id]);
+    await connection.execute('DELETE FROM reviews WHERE request_id = ?', [request.id]);
+    await connection.execute('DELETE FROM payments WHERE request_id = ?', [request.id]);
+    await connection.execute('DELETE FROM financial_transactions WHERE request_id = ?', [request.id]);
+    await connection.execute('DELETE FROM service_requests WHERE id = ?', [request.id]);
+
+    await connection.commit();
+    return res.json({ message: 'Solicitacao excluida do historico.' });
+  } catch (error) {
+    await connection.rollback();
+    return next(error);
+  } finally {
+    connection.release();
+  }
+});
+
 router.patch('/:id/pay', authenticate, authorize('ADMIN'), async (req, res, next) => {
   const connection = await pool.getConnection();
 

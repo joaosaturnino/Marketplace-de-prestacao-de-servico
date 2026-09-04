@@ -19,6 +19,7 @@ import {
   Star,
   Sun,
   Tags,
+  Trash2,
   XCircle,
   ReceiptText,
   UserCog,
@@ -346,7 +347,7 @@ function AppShell({ user, theme, activeView, onNavigate, onToggleTheme, onLogout
         <div className="brand">
           <BriefcaseBusiness />
           <div>
-            <strong>ServicosPro</strong>
+            <strong>Pra Já</strong>
             <span>gestao operacional</span>
           </div>
         </div>
@@ -584,6 +585,7 @@ function ClientDashboard({ view }) {
   const [selected, setSelected] = useState(null);
   const [paymentResult, setPaymentResult] = useState(null);
   const [conversation, setConversation] = useState({ request: null, messages: [], text: '', loading: false });
+  const [deleteCandidate, setDeleteCandidate] = useState(null);
   const [requesting, setRequesting] = useState(false);
   const [requestForm, setRequestForm] = useState({
     scheduledAt: '',
@@ -738,6 +740,25 @@ function ClientDashboard({ view }) {
     }
   }
 
+  function deleteRequest(id) {
+    setDeleteCandidate(requests.find((request) => request.id === id) || null);
+  }
+
+  async function confirmDeleteRequest() {
+    if (!deleteCandidate) return;
+
+    setMessage('');
+
+    try {
+      const result = await api(`/requests/${deleteCandidate.id}`, { method: 'DELETE' });
+      setDeleteCandidate(null);
+      setMessage(result.message);
+      await load();
+    } catch (error) {
+      setMessage(error.message);
+    }
+  }
+
   async function openConversation(request) {
     setConversation({ request, messages: [], text: '', loading: true });
 
@@ -871,6 +892,7 @@ function ClientDashboard({ view }) {
           requests={requests}
           onSubmitReview={submitReview}
           onCancelRequest={cancelRequest}
+          onDeleteRequest={deleteRequest}
           onOpenConversation={openConversation}
         />
       )}
@@ -989,11 +1011,19 @@ function ClientDashboard({ view }) {
           currentRole="CLIENTE"
         />
       )}
+
+      {deleteCandidate && (
+        <DeleteRequestModal
+          request={deleteCandidate}
+          onCancel={() => setDeleteCandidate(null)}
+          onConfirm={confirmDeleteRequest}
+        />
+      )}
     </>
   );
 }
 
-function ClientRequestsDashboard({ requests, onSubmitReview, onCancelRequest, onOpenConversation }) {
+function ClientRequestsDashboard({ requests, onSubmitReview, onCancelRequest, onDeleteRequest, onOpenConversation }) {
   const [reviewForm, setReviewForm] = useState({ requestId: null, rating: 5, comment: '' });
 
   function startReview(request) {
@@ -1046,6 +1076,11 @@ function ClientRequestsDashboard({ requests, onSubmitReview, onCancelRequest, on
                 {!['CONCLUIDO', 'CANCELADO'].includes(request.status) && (
                   <button type="button" onClick={() => onCancelRequest(request.id)}>
                     <XCircle size={16} /> Cancelar
+                  </button>
+                )}
+                {['CONCLUIDO', 'CANCELADO'].includes(request.status) && (
+                  <button type="button" onClick={() => onDeleteRequest(request.id)}>
+                    <Trash2 size={16} /> Excluir
                   </button>
                 )}
                 {request.review_rating ? (
@@ -1138,6 +1173,30 @@ function ConversationModal({ conversation, setConversation, onSubmit, currentRol
           </button>
         </div>
       </form>
+    </div>
+  );
+}
+
+function DeleteRequestModal({ request, onCancel, onConfirm }) {
+  return (
+    <div className="modal-backdrop modal-backdrop-alert" role="presentation">
+      <section className="modal modal-confirm" role="dialog" aria-modal="true" aria-labelledby="delete-request-title">
+        <div className="confirm-icon"><Trash2 size={22} /></div>
+        <div className="modal-head">
+          <div>
+            <span className="eyebrow">Historico da solicitacao</span>
+            <h3 id="delete-request-title">Excluir solicitacao?</h3>
+            <p>{request.service_title}</p>
+          </div>
+        </div>
+        <div className="confirm-copy">
+          <p>Esta solicitacao e os dados relacionados serao removidos do historico. Essa acao nao pode ser desfeita.</p>
+        </div>
+        <div className="modal-actions">
+          <button type="button" onClick={onCancel}>Voltar</button>
+          <button className="danger" type="button" onClick={onConfirm}><Trash2 size={16} /> Excluir</button>
+        </div>
+      </section>
     </div>
   );
 }
@@ -1321,6 +1380,7 @@ function ProviderDashboard({ view }) {
   const [form, setForm] = useState({ categoryId: '', title: '', description: '', price: '', durationMinutes: 60 });
   const [editingService, setEditingService] = useState(null);
   const [conversation, setConversation] = useState({ request: null, messages: [], text: '', loading: false });
+  const [deleteCandidate, setDeleteCandidate] = useState(null);
 
   async function load() {
     const [categoryRows, serviceRows, requestRows, reviewRows, planRows, payoutRows] = await Promise.all([
@@ -1378,6 +1438,25 @@ function ProviderDashboard({ view }) {
   async function updateRequest(id, status) {
     await api(`/requests/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) });
     await load();
+  }
+
+  function deleteRequest(id) {
+    setDeleteCandidate(requests.find((request) => request.id === id) || null);
+  }
+
+  async function confirmDeleteRequest() {
+    if (!deleteCandidate) return;
+
+    setMessage('');
+
+    try {
+      const result = await api(`/requests/${deleteCandidate.id}`, { method: 'DELETE' });
+      setDeleteCandidate(null);
+      setMessage(result.message);
+      await load();
+    } catch (error) {
+      setMessage(error.message);
+    }
   }
 
   async function updateServiceStatus(id, status) {
@@ -1542,7 +1621,7 @@ function ProviderDashboard({ view }) {
             </div>
             <label>
               Categoria
-              <select value={form.categoryId} onChange={(event) => setForm((current) => ({ ...current, categoryId: event.target.value }))}>
+              <select required value={form.categoryId} onChange={(event) => setForm((current) => ({ ...current, categoryId: event.target.value }))}>
                 <option value="">Selecione</option>
                 {categories.map((category) => (
                   <option key={category.id} value={category.id}>{category.name}</option>
@@ -1551,20 +1630,20 @@ function ProviderDashboard({ view }) {
             </label>
             <label>
               Titulo
-              <input value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} />
+              <input required minLength="2" value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} />
             </label>
             <label>
               Descricao
-              <textarea value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} />
+              <textarea required minLength="2" value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} />
             </label>
             <div className="form-grid">
               <label>
                 Preco
-                <input type="number" min="0" step="0.01" value={form.price} onChange={(event) => setForm((current) => ({ ...current, price: event.target.value }))} />
+                  <input required type="number" min="0.01" step="0.01" value={form.price} onChange={(event) => setForm((current) => ({ ...current, price: event.target.value }))} />
               </label>
               <label>
                 Minutos
-                <input type="number" min="15" value={form.durationMinutes} onChange={(event) => setForm((current) => ({ ...current, durationMinutes: event.target.value }))} />
+                  <input required type="number" min="15" step="1" value={form.durationMinutes} onChange={(event) => setForm((current) => ({ ...current, durationMinutes: event.target.value }))} />
               </label>
             </div>
             <button className="primary" type="submit" disabled={!editingService && !hasServiceSlots}>
@@ -1650,8 +1729,13 @@ function ProviderDashboard({ view }) {
                 <button type="button" onClick={() => openConversation(request)}>
                   <MessageSquareText size={16} /> Conversar
                 </button>
-                <button type="button" disabled={request.payment_status !== 'PAGO'} onClick={() => updateRequest(request.id, 'ACEITO')}>Aceitar</button>
+                <button type="button" disabled={request.payment_status !== 'PAGO' || request.status !== 'SOLICITADO'} onClick={() => updateRequest(request.id, 'ACEITO')}>Aceitar</button>
                 <button type="button" disabled={request.payment_status !== 'PAGO'} onClick={() => updateRequest(request.id, 'CONCLUIDO')}>Concluir</button>
+                {['CONCLUIDO', 'CANCELADO'].includes(request.status) && (
+                  <button type="button" onClick={() => deleteRequest(request.id)}>
+                    <Trash2 size={16} /> Excluir
+                  </button>
+                )}
               </div>
               {request.payment_status !== 'PAGO' && (
                 <small className="row-warning">Aguardando pagamento para liberar o atendimento.</small>
@@ -1684,6 +1768,14 @@ function ProviderDashboard({ view }) {
           setConversation={setConversation}
           onSubmit={sendConversationMessage}
           currentRole="PRESTADOR"
+        />
+      )}
+
+      {deleteCandidate && (
+        <DeleteRequestModal
+          request={deleteCandidate}
+          onCancel={() => setDeleteCandidate(null)}
+          onConfirm={confirmDeleteRequest}
         />
       )}
     </>

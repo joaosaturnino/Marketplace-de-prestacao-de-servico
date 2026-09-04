@@ -384,6 +384,7 @@ h3 {
   display: grid;
   gap: 7px;
   padding: 13px;
+  min-width: 0;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface-muted);
@@ -416,7 +417,11 @@ h3 {
   display: grid;
   place-items: center;
   aspect-ratio: 1;
+  width: 100%;
+  max-width: 112px;
   min-height: 96px;
+  min-width: 0;
+  overflow: hidden;
   border: 1px solid var(--border-strong);
   border-radius: 8px;
   background:
@@ -428,6 +433,7 @@ h3 {
   font-weight: 900;
   text-align: center;
   padding: 8px;
+  overflow-wrap: anywhere;
 }
 
 .compact-pix {
@@ -447,7 +453,7 @@ h3 {
 
 .review-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
   gap: 16px;
 }
 
@@ -618,7 +624,7 @@ h3 {
 
 .content {
   min-width: 0;
-  padding: 30px;
+  padding: clamp(18px, 3vw, 30px);
 }
 
 .topbar {
@@ -661,7 +667,7 @@ h3 {
 
 .toolbar {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) 240px auto;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 240px) auto;
   gap: 12px;
   margin: 22px 0 18px;
   padding: 14px;
@@ -673,7 +679,7 @@ h3 {
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(270px, 100%), 1fr));
   gap: 16px;
 }
 
@@ -1117,7 +1123,7 @@ h3 {
 
 .user-management-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
   gap: 16px;
 }
 
@@ -1134,7 +1140,7 @@ h3 {
 
 .withdrawal-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr));
   gap: 16px;
 }
 
@@ -1269,7 +1275,7 @@ h3 {
 
 .plans-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
   gap: 16px;
 }
 
@@ -1418,23 +1424,58 @@ th {
   display: grid;
   place-items: center;
   padding: 16px;
-  background: rgba(5, 10, 18, 0.62);
+  background: rgba(5, 10, 18, 0.68);
+  backdrop-filter: blur(8px);
   z-index: 20;
+  animation: modal-backdrop-in 180ms ease-out;
 }
 
 .modal {
   display: grid;
   gap: 14px;
   width: min(520px, 100%);
-  padding: 22px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  min-width: 0;
+  max-height: min(760px, calc(100dvh - 32px));
+  overflow-y: auto;
+  padding: 26px;
+  border: 1px solid color-mix(in srgb, var(--border) 72%, var(--primary));
+  border-radius: 14px;
   background: var(--surface);
-  box-shadow: var(--shadow);
+  box-shadow: 0 24px 80px rgba(8, 18, 31, 0.26), var(--shadow);
+  animation: modal-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .conversation-modal {
   width: min(760px, 100%);
+}
+
+.modal-confirm {
+  width: min(460px, 100%);
+  gap: 18px;
+}
+
+.confirm-icon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, var(--border));
+  border-radius: 12px;
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
+}
+
+.confirm-copy {
+  padding: 14px 16px;
+  border-left: 3px solid var(--danger);
+  border-radius: 4px 10px 10px 4px;
+  background: color-mix(in srgb, var(--danger) 6%, var(--surface));
+}
+
+.confirm-copy p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
 }
 
 .modal-head {
@@ -1469,6 +1510,7 @@ th {
   gap: 7px;
   justify-self: start;
   max-width: min(78%, 520px);
+  min-width: 0;
   padding: 12px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -1501,7 +1543,33 @@ th {
 }
 
 .modal-actions {
+  position: sticky;
+  bottom: -22px;
+  z-index: 1;
   justify-content: flex-end;
+  padding: 12px 0 0;
+  background: var(--surface);
+}
+
+.modal-actions .danger {
+  border-color: var(--danger);
+  color: #ffffff;
+  background: var(--danger);
+}
+
+.modal-actions .danger:hover {
+  border-color: color-mix(in srgb, var(--danger) 82%, #000000);
+  background: color-mix(in srgb, var(--danger) 82%, #000000);
+}
+
+@keyframes modal-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modal-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 @media (max-width: 980px) {
@@ -1624,6 +1692,30 @@ th {
   .theme-toggle {
     min-width: 96px;
   }
+
+  .user-management-grid,
+  .withdrawal-grid,
+  .plans-grid,
+  .review-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .demo-row,
+  .modal-actions,
+  .actions,
+  .row-actions,
+  .card-actions {
+    width: 100%;
+  }
+
+  .demo-row button,
+  .modal-actions button,
+  .actions button,
+  .row-actions button,
+  .card-actions button {
+    flex: 1 1 140px;
+    max-width: 100%;
+  }
 }
 
 @media (max-width: 640px) {
@@ -1692,6 +1784,10 @@ th {
     padding: 14px;
   }
 
+  .topbar .theme-toggle {
+    flex: 0 0 auto;
+  }
+
   .page-header {
     margin-bottom: 14px;
   }
@@ -1740,6 +1836,11 @@ th {
     width: 100%;
     max-height: calc(100dvh - 24px);
     overflow: auto;
+    padding: 18px;
+  }
+
+  .modal-actions {
+    bottom: -18px;
   }
 
   h1 {

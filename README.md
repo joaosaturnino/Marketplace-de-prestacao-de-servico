@@ -125,7 +125,7 @@ npm run start --workspace server
 4. Em outro terminal, rode o Expo apontando para a API do computador:
 
 ```powershell
-$env:EXPO_PUBLIC_WEB_URL="http://SEU_IP_LOCAL:4173"
+$env:EXPO_PUBLIC_API_URL="http://SEU_IP_LOCAL:3333/api"
 npm run mobile
 ```
 

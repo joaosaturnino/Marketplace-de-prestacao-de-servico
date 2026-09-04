@@ -4,6 +4,30 @@ import { authenticate, authorize } from '../middleware/auth.js';
 
 const router = Router();
 
+function validateServiceInput({ categoryId, title, description, price, durationMinutes }) {
+  const parsedCategoryId = Number(categoryId);
+  const parsedPrice = Number(price);
+  const parsedDuration = Number(durationMinutes || 60);
+
+  if (!Number.isInteger(parsedCategoryId) || parsedCategoryId <= 0) {
+    return 'Selecione uma categoria valida.';
+  }
+
+  if (!String(title || '').trim() || !String(description || '').trim()) {
+    return 'Informe titulo e descricao do servico.';
+  }
+
+  if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
+    return 'Informe um preco maior que zero.';
+  }
+
+  if (!Number.isInteger(parsedDuration) || parsedDuration < 15) {
+    return 'Informe uma duracao de pelo menos 15 minutos.';
+  }
+
+  return null;
+}
+
 router.get('/', async (req, res, next) => {
   try {
     const { search = '', categoryId } = req.query;
@@ -70,8 +94,9 @@ router.post('/', authenticate, authorize('PRESTADOR'), async (req, res, next) =>
   try {
     const { categoryId, title, description, price, durationMinutes } = req.body;
 
-    if (!categoryId || !title || !description || !price) {
-      return res.status(400).json({ message: 'Categoria, titulo, descricao e preco sao obrigatorios.' });
+    const validationMessage = validateServiceInput({ categoryId, title, description, price, durationMinutes });
+    if (validationMessage) {
+      return res.status(400).json({ message: validationMessage });
     }
 
     const [subscription] = await query(
@@ -104,7 +129,7 @@ router.post('/', authenticate, authorize('PRESTADOR'), async (req, res, next) =>
     const result = await query(
       `INSERT INTO services (provider_id, category_id, title, description, price, duration_minutes)
       VALUES (?, ?, ?, ?, ?, ?)`,
-      [req.user.id, categoryId, title, description, Number(price), Number(durationMinutes || 60)]
+      [req.user.id, Number(categoryId), title.trim(), description.trim(), Number(price), Number(durationMinutes || 60)]
     );
 
     return res.status(201).json({ id: result.insertId, message: 'Servico cadastrado com sucesso.' });
@@ -117,8 +142,9 @@ router.patch('/:id', authenticate, authorize('PRESTADOR'), async (req, res, next
   try {
     const { categoryId, title, description, price, durationMinutes } = req.body;
 
-    if (!categoryId || !title || !description || !price) {
-      return res.status(400).json({ message: 'Categoria, titulo, descricao e preco sao obrigatorios.' });
+    const validationMessage = validateServiceInput({ categoryId, title, description, price, durationMinutes });
+    if (validationMessage) {
+      return res.status(400).json({ message: validationMessage });
     }
 
     const result = await query(
@@ -126,9 +152,9 @@ router.patch('/:id', authenticate, authorize('PRESTADOR'), async (req, res, next
       SET category_id = ?, title = ?, description = ?, price = ?, duration_minutes = ?
       WHERE id = ? AND provider_id = ?`,
       [
-        categoryId,
-        title,
-        description,
+        Number(categoryId),
+        title.trim(),
+        description.trim(),
         Number(price),
         Number(durationMinutes || 60),
         req.params.id,

@@ -1,4 +1,4 @@
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.200.27:3333/api';
+const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://172.16.0.81:3333/api';
 
 export class ApiError extends Error {
   constructor(message, status) {

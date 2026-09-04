@@ -272,11 +272,25 @@ export default function App() {
     );
   }
 
-  function Field({ label, value, onChangeText, placeholder, multiline, keyboardType, secureTextEntry }) {
+  function Field({ label, value, onChangeText, placeholder, multiline, keyboardType, secureTextEntry, autoCapitalize, autoCorrect, action }) {
     return (
       <View style={s.field}>
-        <Text style={s.label}>{label}</Text>
-        <TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={c.muted} multiline={multiline} keyboardType={keyboardType} secureTextEntry={secureTextEntry} style={[s.input, multiline && s.textarea]} />
+        <View style={s.labelRow}>
+          <Text style={s.label}>{label}</Text>
+          {action && action}
+        </View>
+        <TextInput
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor={c.muted}
+          multiline={multiline}
+          keyboardType={keyboardType}
+          secureTextEntry={secureTextEntry}
+          autoCapitalize={autoCapitalize}
+          autoCorrect={autoCorrect}
+          style={[s.input, multiline && s.textarea]}
+        />
       </View>
     );
   }
@@ -316,19 +330,30 @@ export default function App() {
   }
 
   function Login() {
+    const [showPassword, setShowPassword] = useState(false);
+
     const update = (field, value) => setAuth((current) => ({ ...current, [field]: value }));
     const demo = (email, password) => {
       setAuthMode('login');
       setAuth((current) => ({ ...current, email, password }));
     };
 
+    const isEmailValid = auth.email.includes('@') && auth.email.includes('.');
+    const isPasswordValid = auth.password.length >= 6;
+    const canSubmit = isEmailValid && isPasswordValid && !loading;
+
     return (
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={s.flex}>
         <ScrollView contentContainerStyle={s.authScroll} keyboardShouldPersistTaps="handled">
           <Card style={s.hero}>
-            <View style={s.rowBetween}><Badge tone="primary">Marketplace</Badge><Button variant="ghost" onPress={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? 'Claro' : 'Escuro'}</Button></View>
-            <Text style={s.heroTitle}>Servicos, agenda e financeiro no celular.</Text>
-            <Text style={s.muted}>App nativo para cliente, prestador e administrador, ajustado para a tela do celular.</Text>
+            <View style={s.rowBetween}>
+              <Badge tone="primary">Marketplace</Badge>
+              <Button variant="ghost" onPress={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+                {theme === 'dark' ? '☀️ Claro' : '🌙 Escuro'}
+              </Button>
+            </View>
+            <Text style={s.heroTitle}>PraJá</Text>
+            <Text style={s.muted}>Acesse sua conta ou cadastre-se para comecar.</Text>
           </Card>
 
           <Card>
@@ -336,15 +361,72 @@ export default function App() {
               <Button variant={authMode === 'login' ? 'primary' : 'ghost'} style={s.segmentButton} onPress={() => setAuthMode('login')}>Entrar</Button>
               <Button variant={authMode === 'register' ? 'primary' : 'ghost'} style={s.segmentButton} onPress={() => setAuthMode('register')}>Cadastrar</Button>
             </View>
-            {authMode === 'register' ? <View style={s.chips}><Chip active={authRole === 'CLIENTE'} onPress={() => setAuthRole('CLIENTE')}>Cliente</Chip><Chip active={authRole === 'PRESTADOR'} onPress={() => setAuthRole('PRESTADOR')}>Prestador</Chip></View> : null}
-            {authMode === 'register' ? <Field label="Nome" value={auth.name} onChangeText={(v) => update('name', v)} /> : null}
-            <Field label="Email" value={auth.email} onChangeText={(v) => update('email', v)} keyboardType="email-address" />
-            <Field label="Senha" value={auth.password} onChangeText={(v) => update('password', v)} secureTextEntry />
-            {authMode === 'register' ? <><Field label="Telefone" value={auth.phone} onChangeText={(v) => update('phone', v)} keyboardType="phone-pad" /><View style={s.twoCols}><Field label="Cidade" value={auth.city} onChangeText={(v) => update('city', v)} /><Field label="UF" value={auth.state} onChangeText={(v) => update('state', v)} /></View>{authRole === 'CLIENTE' ? <Field label="Endereco" value={auth.address} onChangeText={(v) => update('address', v)} /> : null}{authRole === 'PRESTADOR' ? <Field label="Documento" value={auth.document} onChangeText={(v) => update('document', v)} /> : null}{authRole === 'PRESTADOR' ? <Field label="Bio" value={auth.bio} onChangeText={(v) => update('bio', v)} multiline /> : null}</> : null}
-            <Button variant="primary" disabled={loading} onPress={login}>{loading ? 'Aguarde...' : authMode === 'login' ? 'Entrar' : 'Criar conta'}</Button>
+
+            {authMode === 'register' ? (
+              <View style={s.chips}>
+                <Chip active={authRole === 'CLIENTE'} onPress={() => setAuthRole('CLIENTE')}>Cliente</Chip>
+                <Chip active={authRole === 'PRESTADOR'} onPress={() => setAuthRole('PRESTADOR')}>Prestador</Chip>
+              </View>
+            ) : null}
+
+            {authMode === 'register' ? (
+              <Field label="Nome" value={auth.name} onChangeText={(v) => update('name', v)} placeholder="Ex: Joao da Silva" autoCapitalize="words" />
+            ) : null}
+
+            <Field
+              label="Email"
+              value={auth.email}
+              onChangeText={(v) => update('email', v)}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+              placeholder="seu@email.com"
+            />
+
+            <Field
+              label="Senha"
+              value={auth.password}
+              onChangeText={(v) => update('password', v)}
+              secureTextEntry={!showPassword}
+              placeholder="Minimo de 6 caracteres"
+              action={
+                <Pressable onPress={() => setShowPassword(!showPassword)}>
+                  <Text style={s.linkText}>{showPassword ? 'Ocultar' : 'Mostrar'}</Text>
+                </Pressable>
+              }
+            />
+
+            {authMode === 'register' ? (
+              <>
+                <Field label="Telefone" value={auth.phone} onChangeText={(v) => update('phone', v)} keyboardType="phone-pad" placeholder="(00) 00000-0000" />
+                <View style={s.twoCols}>
+                  <Field label="Cidade" value={auth.city} onChangeText={(v) => update('city', v)} placeholder="Sua cidade" />
+                  <Field label="UF" value={auth.state} onChangeText={(v) => update('state', v)} placeholder="SP" autoCapitalize="characters" />
+                </View>
+                {authRole === 'CLIENTE' ? <Field label="Endereco" value={auth.address} onChangeText={(v) => update('address', v)} placeholder="Rua, Numero, Bairro" /> : null}
+                {authRole === 'PRESTADOR' ? <Field label="Documento" value={auth.document} onChangeText={(v) => update('document', v)} keyboardType="number-pad" /> : null}
+                {authRole === 'PRESTADOR' ? <Field label="Bio" value={auth.bio} onChangeText={(v) => update('bio', v)} multiline placeholder="Fale um pouco sobre seus servicos..." /> : null}
+              </>
+            ) : null}
+
+            <Button
+              variant="primary"
+              disabled={!canSubmit}
+              onPress={login}
+              style={{ marginTop: 8 }}
+            >
+              {loading ? 'Aguarde...' : authMode === 'login' ? 'Entrar' : 'Criar conta'}
+            </Button>
           </Card>
 
-          <Card><Text style={s.cardTitle}>Contas de teste</Text><View style={s.chips}><Button variant="soft" onPress={() => demo('cliente@servicos.local', 'cliente123')}>Cliente</Button><Button variant="soft" onPress={() => demo('prestador@servicos.local', 'prestador123')}>Prestador</Button><Button variant="soft" onPress={() => demo('admin@servicos.local', 'admin123')}>Admin</Button></View></Card>
+          <Card>
+            <Text style={s.cardTitle}>Contas de teste</Text>
+            <View style={s.chips}>
+              <Button variant="soft" onPress={() => demo('cliente@servicos.local', 'cliente123')}>Cliente</Button>
+              <Button variant="soft" onPress={() => demo('prestador@servicos.local', 'prestador123')}>Prestador</Button>
+              <Button variant="soft" onPress={() => demo('admin@servicos.local', 'admin123')}>Admin</Button>
+            </View>
+          </Card>
           <Message />
         </ScrollView>
       </KeyboardAvoidingView>
@@ -376,7 +458,7 @@ export default function App() {
     return (
       <View style={s.screen}>
         <View style={s.header}>
-          <View style={s.fill}><Text style={s.appName}>ServicosPro</Text><Text style={s.small}>{roles[user.role]} - {activeLabel}</Text></View>
+          <View style={s.fill}><Text style={s.appName}>PraJá</Text><Text style={s.small}>{roles[user.role]} - {activeLabel}</Text></View>
           <View style={s.headerButtons}><Button variant="ghost" onPress={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? 'Claro' : 'Escuro'}</Button><Button variant="danger" onPress={() => { setUser(null); setToken(null); setData({}); }}>Sair</Button></View>
         </View>
         <Message />
@@ -457,7 +539,6 @@ export default function App() {
     return <View style={s.stack}><Title title="Financeiro" subtitle="Saldo disponivel, taxas e repasses do prestador." /><View style={s.metricGrid}><Metric label="Disponivel" value={brl(balance.available_amount)} tone="success" /><Metric label="Taxa pendente" value={brl(balance.pending_fee_amount)} tone="warning" /><Metric label="Liquido" value={brl(net)} /><Metric label="Taxas" value={brl(fees)} /></View><Card><Text style={s.cardTitle}>Resumo</Text><Info label="Volume bruto" value={brl(gross)} /><Info label="Repasse" value={brl(net)} /><Info label="Taxa plataforma" value={brl(fees)} /></Card>{rows.map((item) => <Card key={item.id}><Text style={s.cardTitle}>{item.service_title}</Text><Info label="Cliente" value={item.client_name} /><Info label="Pagamento" value={`${payLabel(item.payment_method)} - ${labelStatus(item.payment_status)}`} /><Info label="Taxa" value={brl(item.platform_fee)} /><Info label="Voce recebe" value={brl(item.provider_amount)} /></Card>)}</View>;
   }
 
-
   function Payouts() {
     const rows = data.payouts?.withdrawals || [];
     const set = (field, value) => setPayout((cur) => ({ ...cur, [field]: value }));
@@ -481,9 +562,42 @@ export default function App() {
 
   function AdminOverview() {
     const o = data.overview || {};
-    return <View style={s.stack}><Title title="Visao geral" subtitle="Indicadores principais da plataforma." /><View style={s.metricGrid}><Metric label="Usuarios" value={String(o.users || o.total_users || 0)} /><Metric label="Prestadores" value={String(o.providers || o.total_providers || 0)} /><Metric label="Solicitacoes" value={String(o.requests || o.total_requests || 0)} /><Metric label="Receita" value={brl(o.platform_revenue || o.total_platform_fee)} tone="success" /></View></View>;
-  }
+    const users = o.users || {};
+    const requests = o.requests || {};
+    const payments = o.payments || {};
+    const quality = o.quality || {};
+    const totalUsers = Number(users.clients || 0) + Number(users.providers || 0) + Number(users.admins || 0);
+    const completionRate = Number(requests.total_requests || 0) > 0
+      ? `${((Number(requests.completed_requests || 0) / Number(requests.total_requests || 1)) * 100).toFixed(0)}%`
+      : '0%';
 
+    return (
+      <View style={s.stack}>
+        <Title title="Visao geral" subtitle="Painel executivo com usuarios, operacao, pagamentos e qualidade." />
+        <View style={s.metricGrid}>
+          <Metric label="Usuarios" value={String(totalUsers)} />
+          <Metric label="Clientes" value={String(users.clients || 0)} />
+          <Metric label="Prestadores" value={String(users.providers || 0)} />
+          <Metric label="Admins" value={String(users.admins || 0)} />
+        </View>
+        <Card>
+          <Text style={s.cardTitle}>Operacao</Text>
+          <Info label="Solicitacoes" value={String(requests.total_requests || 0)} />
+          <Info label="Concluidas" value={String(requests.completed_requests || 0)} />
+          <Info label="Taxa conclusao" value={completionRate} />
+          <Info label="Avaliacao media" value={`${Number(quality.average_rating || 0).toFixed(1)}/5`} />
+        </Card>
+        <Card>
+          <Text style={s.cardTitle}>Financeiro</Text>
+          <Info label="Volume bruto" value={brl(requests.gross_volume)} />
+          <Info label="Receita plataforma" value={brl(requests.platform_revenue)} />
+          <Info label="Repasse prestadores" value={brl(requests.provider_payable)} />
+          <Info label="Pago" value={`${String(payments.paid || 0)} pedidos - ${brl(payments.paid_amount)}`} />
+          <Info label="Pendente" value={`${String(payments.pending || 0)} pedidos - ${brl(payments.pending_amount)}`} />
+        </Card>
+      </View>
+    );
+  }
   function AdminFinance() {
     const rows = data.transactions || [];
     const requests = data.requests || [];
@@ -555,6 +669,8 @@ function makeStyles(c) {
     muted: { color: c.muted, fontSize: 14, lineHeight: 20 },
     small: { color: c.muted, fontSize: 12, lineHeight: 17 },
     field: { flex: 1, gap: 6 },
+    labelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    linkText: { color: c.primary, fontSize: 12, fontWeight: '800' },
     label: { color: c.text, fontSize: 12, fontWeight: '900', textTransform: 'uppercase' },
     input: { minHeight: 44, borderRadius: 8, borderWidth: 1, borderColor: c.border, backgroundColor: c.raised, color: c.text, paddingHorizontal: 12, paddingVertical: 9, fontSize: 15 },
     textarea: { minHeight: 92, textAlignVertical: 'top' },
