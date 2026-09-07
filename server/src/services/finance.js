@@ -1,9 +1,18 @@
+function normalizePositiveAmount(amount) {
+  const value = Number(amount);
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new TypeError('O valor financeiro deve ser um numero positivo.');
+  }
+  return Number(value.toFixed(2));
+}
+
 export function generatePixPayload({ requestId, amount, payerName }) {
+  const normalizedAmount = normalizePositiveAmount(amount);
   const code = `PIX-${String(requestId).padStart(6, '0')}-${Date.now().toString().slice(-6)}`;
   const payload = [
     '000201',
     '26580014BR.GOV.BCB.PIX',
-    `520400005303986540${Number(amount).toFixed(2)}`,
+    `520400005303986540${normalizedAmount.toFixed(2)}`,
     '5802BR',
     `5913SERVICOSPRO`,
     `6009SAO PAULO`,
@@ -12,6 +21,27 @@ export function generatePixPayload({ requestId, amount, payerName }) {
   ].join('');
 
   return { code, payload };
+}
+export function generateBoletoPayload({ referenceId, amount, payerName, type = 'SERVICO' }) {
+  const normalizedAmount = normalizePositiveAmount(amount);
+  const cents = Math.round(normalizedAmount * 100);
+  const seed = `${Date.now()}${String(referenceId || '').replace(/\D/g, '')}${cents}`;
+  const code = seed.padEnd(47, '0').slice(0, 47);
+  const dueDate = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const digitableLine = [
+    `${code.slice(0, 5)}.${code.slice(5, 10)}`,
+    `${code.slice(10, 15)}.${code.slice(15, 21)}`,
+    `${code.slice(21, 26)}.${code.slice(26, 32)}`,
+    code.slice(32, 33),
+    `${String(cents).padStart(10, '0')}${code.slice(33)}`
+  ].join(' ');
+
+  return {
+    code,
+    digitableLine,
+    dueDate,
+    description: `${type}-${String(referenceId || '000000')}-${String(payerName || 'CLIENTE').slice(0, 20).toUpperCase()}`
+  };
 }
 
 export function getCardSummary(card = {}) {

@@ -25,6 +25,7 @@ const nav = {
     ['services', 'Buscar'],
     ['requests', 'Solicitacoes'],
     ['payments', 'Pagamentos'],
+    ['boletos', 'Boletos'],
     ['plans', 'Planos'],
     ['profile', 'Perfil']
   ],
@@ -32,6 +33,7 @@ const nav = {
     ['services', 'Servicos'],
     ['requests', 'Solicitacoes'],
     ['finance', 'Financeiro'],
+    ['boletos', 'Boletos'],
     ['payouts', 'Saques'],
     ['plans', 'Planos'],
     ['reviews', 'Avaliacoes'],
@@ -41,6 +43,7 @@ const nav = {
   ADMIN: [
     ['overview', 'Resumo'],
     ['finance', 'Financeiro'],
+    ['boletos', 'Boletos'],
     ['withdrawals', 'Saques'],
     ['plans', 'Planos'],
     ['users', 'Usuarios'],
@@ -77,7 +80,7 @@ function labelStatus(value) {
 }
 
 function payLabel(value) {
-  return { PIX: 'PIX', CARTAO_CREDITO: 'Credito', CARTAO_DEBITO: 'Debito', DINHEIRO: 'Dinheiro' }[value] || value || 'Nao informado';
+  return { PIX: 'PIX', BOLETO: 'Boleto', CARTAO_CREDITO: 'Credito', CARTAO_DEBITO: 'Debito', DINHEIRO: 'Dinheiro' }[value] || value || 'Nao informado';
 }
 
 function valueOr(value, fallback = 'Nao informado') {
@@ -133,8 +136,8 @@ export default function App() {
         const account = payouts.account || {};
         setPayout({ payoutMethod: account.payout_method || 'PIX', pixKey: account.pix_key || '', bankName: account.bank_name || '', agency: account.agency || '', accountNumber: account.account_number || '', accountType: account.account_type || 'CORRENTE', holderName: account.holder_name || '', document: account.document || '' });
       } else {
-        const [overview, requests, transactions, withdrawals, planSummary, users, categories] = await Promise.all([signed('/admin/overview'), signed('/admin/requests'), signed('/admin/transactions'), signed('/admin/withdrawals'), signed('/plans/admin/summary'), signed('/admin/users'), signed('/categories')]);
-        setData({ overview, requests, transactions, withdrawals, planSummary, users, categories });
+        const [overview, requests, transactions, withdrawals, planSummary, planBilling, users, categories] = await Promise.all([signed('/admin/overview'), signed('/admin/requests'), signed('/admin/transactions'), signed('/admin/withdrawals'), signed('/plans/admin/summary'), signed('/admin/plan-billing'), signed('/admin/users'), signed('/categories')]);
+        setData({ overview, requests, transactions, withdrawals, planSummary, planBilling, users, categories });
       }
       if (view === 'profile') await loadProfile();
     } catch (error) {
@@ -202,6 +205,16 @@ export default function App() {
   async function subscribe(planId) {
     try {
       const result = await signed('/plans/subscribe', { method: 'POST', body: { planId } });
+      notice(result.message);
+      await loadData();
+    } catch (error) {
+      notice(error.message);
+    }
+  }
+
+  async function updatePlanBillingStatus(id, status) {
+    try {
+      const result = await signed(`/admin/plan-billing/${id}/status`, { method: 'PATCH', body: { status } });
       notice(result.message);
       await loadData();
     } catch (error) {
@@ -474,6 +487,7 @@ export default function App() {
       if (view === 'services') return ClientServices();
       if (view === 'requests') return Requests('CLIENTE');
       if (view === 'payments') return Payments();
+      if (view === 'boletos') return Boletos();
       if (view === 'plans') return Plans();
       return Profile();
     }
@@ -481,6 +495,7 @@ export default function App() {
       if (view === 'services') return ProviderServices();
       if (view === 'requests') return Requests('PRESTADOR');
       if (view === 'finance') return ProviderFinance();
+      if (view === 'boletos') return Boletos();
       if (view === 'payouts') return Payouts();
       if (view === 'plans') return Plans();
       if (view === 'reviews') return Reviews();
@@ -489,6 +504,7 @@ export default function App() {
     }
     if (view === 'overview') return AdminOverview();
     if (view === 'finance') return AdminFinance();
+    if (view === 'boletos') return Boletos();
     if (view === 'withdrawals') return AdminWithdrawals();
     if (view === 'plans') return AdminPlans();
     if (view === 'users') return AdminUsers();
@@ -520,7 +536,15 @@ export default function App() {
     const info = data.plans || { plans: [], subscription: null, usage: {} };
     const active = info.subscription?.id;
     const used = user.role === 'CLIENTE' ? info.usage?.requests_count : info.usage?.services_count;
+    const billings = info.billings || [];
     return <View style={s.stack}><Title title="Planos" subtitle="Inclui plano gratuito e planos pagos para cliente ou prestador." />{info.subscription ? <Card><Text style={s.cardTitle}>Atual: {info.subscription.name}</Text><Text style={s.body}>{info.subscription.description}</Text><Text style={s.small}>Uso atual: {Number(used || 0)}</Text></Card> : null}{(info.plans || []).map((item) => <Card key={item.id}><View style={s.cardHead}><View style={s.fill}><Text style={s.cardTitle}>{item.name}</Text><Text style={s.muted}>{item.description}</Text></View><Badge tone={Number(item.monthly_price || 0) === 0 ? 'success' : 'primary'}>{Number(item.monthly_price || 0) === 0 ? 'Gratis' : brl(item.monthly_price)}</Badge></View><Info label="Comissao" value={`${Number(item.commission_rate || 0).toFixed(1)}%`} />{item.max_services !== null ? <Info label="Limite servicos" value={String(item.max_services)} /> : null}{item.max_requests_per_month !== null ? <Info label="Solicitacoes/mes" value={String(item.max_requests_per_month)} /> : null}<Button variant={active === item.id ? 'soft' : 'primary'} disabled={active === item.id} onPress={() => subscribe(item.id)}>{active === item.id ? 'Plano ativo' : 'Assinar'}</Button></Card>)}</View>;
+  }
+
+  function Boletos() {
+    const serviceRows = (data.requests || []).filter((item) => item.payment_method === 'BOLETO' && item.boleto_digitable_line);
+    const planRows = user.role === 'ADMIN' ? (data.planBilling || []) : (data.plans?.billings || []);
+    const total = [...serviceRows, ...planRows].reduce((sum, item) => sum + Number(item.amount || item.total_amount || 0), 0);
+    return <View style={s.stack}><Title title="Boletos" subtitle="Todas as cobrancas de servicos e planos em um so lugar." /><Card><Text style={s.cardTitle}>Resumo</Text><Info label="Total" value={brl(total)} /><Info label="Pendentes" value={String([...serviceRows, ...planRows].filter((item) => (item.payment_status || item.status) === 'PENDENTE').length)} /></Card>{serviceRows.length ? <Text style={s.sectionTitle}>Boletos de servicos</Text> : null}{serviceRows.map((item) => <Card key={`service-${item.id}`}><View style={s.cardHead}><View style={s.fill}><Text style={s.cardTitle}>{item.service_title}</Text><Text style={s.muted}>Boleto do servico</Text></View><Badge>{labelStatus(item.payment_status)}</Badge></View><Info label="Valor" value={brl(item.total_amount)} /><Info label="Vencimento" value={valueOr(item.boleto_due_date)} /><Text style={s.small}>Linha digitavel: {valueOr(item.boleto_digitable_line)}</Text>{item.payment_status !== 'PAGO' && user.role === 'CLIENTE' ? <Button variant="primary" onPress={() => confirmPix(item.id)}>Confirmar boleto</Button> : null}</Card>)}{planRows.length ? <Text style={s.sectionTitle}>Boletos de planos</Text> : null}{planRows.map((item) => <Card key={`plan-${item.id}`}><View style={s.cardHead}><View style={s.fill}><Text style={s.cardTitle}>{item.plan_name}</Text><Text style={s.muted}>{user.role === 'ADMIN' ? item.user_name : 'Assinatura do plano'}</Text></View><Badge>{labelStatus(item.status)}</Badge></View><Info label="Valor" value={brl(item.amount)} /><Info label="Vencimento" value={valueOr(item.due_date)} /><Text style={s.small}>Linha digitavel: {valueOr(item.digitable_line)}</Text><Text style={s.small}>Codigo de barras: {valueOr(item.boleto_code)}</Text></Card>)}{!serviceRows.length && !planRows.length ? <Empty text="Nenhum boleto encontrado." /> : null}</View>;
   }
 
   function ProviderServices() {
@@ -613,7 +637,8 @@ export default function App() {
 
   function AdminPlans() {
     const summary = data.planSummary || { plans: [], totals: {} };
-    return <View style={s.stack}><Title title="Planos" subtitle="Planos de cliente e prestador." /><View style={s.metricGrid}><Metric label="Assinaturas" value={String(summary.totals?.active_subscriptions || 0)} /><Metric label="Receita mensal" value={brl(summary.totals?.monthly_recurring_revenue)} tone="success" /></View>{(summary.plans || []).map((item) => <Card key={item.id}><Text style={s.cardTitle}>{item.name}</Text><Info label="Publico" value={roles[item.target_role] || item.target_role} /><Info label="Mensalidade" value={brl(item.monthly_price)} /><Info label="Comissao" value={`${Number(item.commission_rate || 0).toFixed(1)}%`} /><Info label="Assinantes" value={String(item.active_subscriptions || 0)} /></Card>)}</View>;
+    const billings = data.planBilling || [];
+    return <View style={s.stack}><Title title="Planos" subtitle="Planos, boletos e assinaturas de cliente ou prestador." /><View style={s.metricGrid}><Metric label="Assinaturas" value={String(summary.totals?.active_subscriptions || 0)} /><Metric label="Receita mensal" value={brl(summary.totals?.monthly_recurring_revenue)} tone="success" /></View><Text style={s.sectionTitle}>Boletos de planos</Text>{billings.length ? billings.map((item) => <Card key={item.id}><View style={s.cardHead}><View style={s.fill}><Text style={s.cardTitle}>{item.plan_name}</Text><Text style={s.muted}>{item.user_name} - {item.target_role === 'CLIENTE' ? 'Cliente' : 'Prestador'}</Text></View><Badge tone={item.status === 'PAGO' ? 'success' : item.status === 'CANCELADO' ? 'danger' : 'neutral'}>{labelStatus(item.status)}</Badge></View><Info label="Valor" value={brl(item.amount)} /><Info label="Vencimento" value={when(item.due_date)} /><Text style={s.small}>Linha digitavel: {item.digitable_line}</Text>{item.status === 'PENDENTE' ? <View style={s.actions}><Button variant="primary" onPress={() => updatePlanBillingStatus(item.id, 'PAGO')}>Marcar pago</Button><Button variant="danger" onPress={() => updatePlanBillingStatus(item.id, 'CANCELADO')}>Cancelar</Button></View> : null}</Card>) : <Empty text="Nenhum boleto de plano encontrado." />}{(summary.plans || []).map((item) => <Card key={item.id}><Text style={s.cardTitle}>{item.name}</Text><Info label="Publico" value={roles[item.target_role] || item.target_role} /><Info label="Mensalidade" value={brl(item.monthly_price)} /><Info label="Comissao" value={`${Number(item.commission_rate || 0).toFixed(1)}%`} /><Info label="Assinantes" value={String(item.active_subscriptions || 0)} /></Card>)}</View>;
   }
 
   function AdminUsers() {
@@ -655,6 +680,7 @@ function makeStyles(c) {
     bottomText: { color: c.muted, fontSize: 11, fontWeight: '800', maxWidth: 70 },
     bottomTextActive: { color: c.primary },
     stack: { gap: 12 },
+    sectionTitle: { color: c.text, fontSize: 16, fontWeight: '900', marginTop: 4 },
     hero: { gap: 12 },
     rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
     fill: { flex: 1, minWidth: 0 },

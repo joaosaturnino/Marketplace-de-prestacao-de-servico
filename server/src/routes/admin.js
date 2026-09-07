@@ -64,6 +64,9 @@ router.get('/requests', async (_req, res, next) => {
         p.status AS payment_status,
         p.method AS payment_method,
         p.pix_code,
+        p.boleto_code,
+        p.boleto_digitable_line,
+        p.boleto_due_date,
         p.card_brand,
         p.card_last4,
         p.provider_fee_status,
@@ -95,6 +98,108 @@ router.get('/transactions', async (_req, res, next) => {
     return res.json(rows);
   } catch (error) {
     return next(error);
+  }
+});
+
+router.get('/plan-billing', async (_req, res, next) => {
+  try {
+    const rows = await query(
+      `SELECT
+        pb.id,
+        pb.user_id,
+        pb.target_role,
+        pb.plan_id,
+        pb.amount,
+        pb.status,
+        pb.boleto_code,
+        pb.digitable_line,
+        pb.due_date,
+        pb.paid_at,
+        pb.canceled_at,
+        pb.created_at,
+        u.name AS user_name,
+        u.email AS user_email,
+        p.name AS plan_name
+      FROM plan_billing pb
+      JOIN users u ON u.id = pb.user_id
+      JOIN plans p ON p.id = pb.plan_id
+      ORDER BY pb.created_at DESC`
+    );
+
+    return res.json(rows);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.patch('/plan-billing/:id/status', async (req, res, next) => {
+  const { status } = req.body;
+
+  if (!['PAGO', 'CANCELADO'].includes(status)) {
+    return res.status(400).json({ message: 'Status de boleto invalido.' });
+  }
+
+  const connection = await pool.getConnection();
+
+  try {
+    await connection.beginTransaction();
+    const [billings] = await connection.execute(
+      `SELECT id, user_id, target_role, plan_id, status
+      FROM plan_billing
+      WHERE id = ?
+      LIMIT 1
+      FOR UPDATE`,
+      [req.params.id]
+    );
+    const billing = billings[0];
+
+    if (!billing) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Boleto nao encontrado.' });
+    }
+
+    if (billing.status !== 'PENDENTE') {
+      await connection.rollback();
+      return res.status(409).json({ message: 'Este boleto ja foi finalizado.' });
+    }
+
+    await connection.execute(
+      `UPDATE plan_billing
+      SET status = ?,
+        paid_at = CASE WHEN ? = 'PAGO' THEN NOW() ELSE paid_at END,
+        canceled_at = CASE WHEN ? = 'CANCELADO' THEN NOW() ELSE canceled_at END
+      WHERE id = ?`,
+      [status, status, status, billing.id]
+    );
+
+    const subscriptionTable = billing.target_role === 'CLIENTE' ? 'client_subscriptions' : 'provider_subscriptions';
+    const userField = billing.target_role === 'CLIENTE' ? 'client_id' : 'provider_id';
+
+    if (status === 'PAGO') {
+      await connection.execute(
+        `UPDATE ${subscriptionTable}
+        SET status = 'CANCELADA', ends_at = NOW()
+        WHERE ${userField} = ? AND status = 'ATIVA'`,
+        [billing.user_id]
+      );
+      await connection.execute(
+        `INSERT INTO ${subscriptionTable} (${userField}, plan_id, status, starts_at, ends_at)
+        VALUES (?, ?, 'ATIVA', NOW(), DATE_ADD(NOW(), INTERVAL 30 DAY))`,
+        [billing.user_id, billing.plan_id]
+      );
+    }
+
+    await connection.commit();
+    return res.json({
+      message: status === 'PAGO'
+        ? 'Boleto marcado como pago e assinatura ativada.'
+        : 'Boleto cancelado. A assinatura atual foi preservada.'
+    });
+  } catch (error) {
+    await connection.rollback();
+    return next(error);
+  } finally {
+    connection.release();
   }
 });
 

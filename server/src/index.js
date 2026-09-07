@@ -1,6 +1,7 @@
 import cors from 'cors';
 import express from 'express';
 import { config } from './config.js';
+import { testDatabaseConnection } from './db.js';
 import adminRoutes from './routes/admin.js';
 import authRoutes from './routes/auth.js';
 import categoryRoutes from './routes/categories.js';
@@ -14,11 +15,24 @@ import serviceRoutes from './routes/services.js';
 
 const app = express();
 
-app.use(cors({ origin: config.clientUrls }));
-app.use(express.json());
+app.disable('x-powered-by');
+app.use(cors({ origin: config.clientUrls, methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'] }));
+app.use(express.json({ limit: '1mb' }));
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Cache-Control', 'no-store');
+  next();
+});
 
-app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok' });
+app.get('/api/health', async (_req, res, next) => {
+  try {
+    await testDatabaseConnection();
+    res.json({ status: 'ok', database: 'ok' });
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.use('/api/auth', authRoutes);
@@ -38,9 +52,12 @@ app.use((req, res) => {
 
 app.use((error, _req, res, _next) => {
   console.error(error);
-  res.status(500).json({ message: 'Erro interno do servidor.' });
+  if (error?.type === 'entity.too.large') {
+    return res.status(413).json({ message: 'Payload muito grande.' });
+  }
+  return res.status(500).json({ message: 'Erro interno do servidor.' });
 });
 
 app.listen(config.port, () => {
-  console.log(`API rodando em http://localhost:${config.port}`);
+  console.log(`API rodando na porta ${config.port}`);
 });

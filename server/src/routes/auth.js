@@ -17,9 +17,14 @@ function signUser(user) {
 router.post('/register', async (req, res, next) => {
   const { name, email, password, role, phone, city, state, address, document, bio } = req.body;
   const allowedRoles = ['CLIENTE', 'PRESTADOR'];
+  const normalizedName = String(name || '').trim();
+  const normalizedEmail = String(email || '').trim().toLowerCase();
 
-  if (!name || !email || !password || !allowedRoles.includes(role)) {
+  if (!normalizedName || !normalizedEmail || !password || !allowedRoles.includes(role)) {
     return res.status(400).json({ message: 'Informe nome, email, senha e tipo de cadastro valido.' });
+  }
+  if (String(password).length < 8) {
+    return res.status(400).json({ message: 'A senha deve possuir pelo menos 8 caracteres.' });
   }
 
   const connection = await pool.getConnection();
@@ -30,7 +35,7 @@ router.post('/register', async (req, res, next) => {
     const passwordHash = await bcrypt.hash(password, 10);
     const [result] = await connection.execute(
       'INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)',
-      [name, email, passwordHash, role]
+      [normalizedName, normalizedEmail, passwordHash, role]
     );
 
     const userId = result.insertId;
@@ -51,7 +56,7 @@ router.post('/register', async (req, res, next) => {
 
     await connection.commit();
 
-    const user = { id: userId, name, email, role };
+    const user = { id: userId, name: normalizedName, email: normalizedEmail, role };
     return res.status(201).json({ token: signUser(user), user });
   } catch (error) {
     await connection.rollback();
@@ -69,14 +74,15 @@ router.post('/register', async (req, res, next) => {
 router.post('/login', async (req, res, next) => {
   try {
     const { email, password } = req.body;
+    const normalizedEmail = String(email || '').trim().toLowerCase();
 
-    if (!email || !password) {
+    if (!normalizedEmail || !password) {
       return res.status(400).json({ message: 'Informe email e senha.' });
     }
 
     const users = await query(
       'SELECT id, name, email, password_hash, role, status FROM users WHERE email = ? LIMIT 1',
-      [email]
+      [normalizedEmail]
     );
     const user = users[0];
 

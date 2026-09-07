@@ -124,6 +124,23 @@ CREATE TABLE IF NOT EXISTS client_subscriptions (
   FOREIGN KEY (plan_id) REFERENCES plans(id)
 );
 
+CREATE TABLE IF NOT EXISTS plan_billing (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  target_role ENUM('CLIENTE', 'PRESTADOR') NOT NULL,
+  plan_id INT NOT NULL,
+  amount DECIMAL(10,2) NOT NULL,
+  status ENUM('PENDENTE', 'PAGO', 'CANCELADO') NOT NULL DEFAULT 'PENDENTE',
+  boleto_code VARCHAR(48) NOT NULL,
+  digitable_line VARCHAR(100) NOT NULL,
+  due_date DATE NOT NULL,
+  paid_at DATETIME,
+  canceled_at DATETIME,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (plan_id) REFERENCES plans(id)
+);
+
 CREATE TABLE IF NOT EXISTS service_requests (
   id INT AUTO_INCREMENT PRIMARY KEY,
   client_id INT NOT NULL,
@@ -172,10 +189,13 @@ CREATE TABLE IF NOT EXISTS payments (
   request_id INT NOT NULL UNIQUE,
   payer_id INT NOT NULL,
   amount DECIMAL(10,2) NOT NULL,
-  method ENUM('PIX', 'CARTAO_CREDITO', 'CARTAO_DEBITO', 'DINHEIRO') NOT NULL DEFAULT 'PIX',
+  method ENUM('PIX', 'CARTAO_CREDITO', 'CARTAO_DEBITO', 'DINHEIRO', 'BOLETO') NOT NULL DEFAULT 'PIX',
   status ENUM('PENDENTE', 'PAGO', 'ESTORNADO') NOT NULL DEFAULT 'PENDENTE',
   pix_code VARCHAR(80),
   pix_qr_payload TEXT,
+  boleto_code VARCHAR(48),
+  boleto_digitable_line VARCHAR(100),
+  boleto_due_date DATE,
   card_brand VARCHAR(40),
   card_last4 VARCHAR(4),
   provider_fee_status ENUM('NAO_APLICA', 'DESCONTADA', 'PENDENTE') NOT NULL DEFAULT 'NAO_APLICA',

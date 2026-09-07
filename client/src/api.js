@@ -20,10 +20,21 @@ export async function api(path, options = {}) {
     }
   });
 
-  const data = await response.json().catch(() => null);
+  const contentType = response.headers.get('content-type') || '';
+  const data = response.status === 204
+    ? null
+    : contentType.includes('application/json')
+      ? await response.json().catch(() => null)
+      : await response.text().catch(() => null);
 
   if (!response.ok) {
-    throw new ApiError(data?.message || 'Erro na requisicao.', response.status);
+    if (response.status === 401) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      window.dispatchEvent(new Event('auth:expired'));
+    }
+    const message = typeof data === 'object' ? data?.message : data;
+    throw new ApiError(message || 'Erro na requisicao.', response.status);
   }
 
   return data;

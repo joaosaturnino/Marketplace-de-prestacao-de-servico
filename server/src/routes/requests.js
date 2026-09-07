@@ -4,6 +4,7 @@ import { authenticate, authorize } from '../middleware/auth.js';
 import {
   applyCashPaymentFee,
   applySystemPayment,
+  generateBoletoPayload,
   generatePixPayload,
   getCardSummary,
   releaseProviderPayout
@@ -12,6 +13,13 @@ import {
 const router = Router();
 
 const validStatuses = ['SOLICITADO', 'ACEITO', 'EM_ANDAMENTO', 'CONCLUIDO', 'CANCELADO'];
+const allowedStatusTransitions = {
+  SOLICITADO: ['ACEITO', 'CANCELADO'],
+  ACEITO: ['EM_ANDAMENTO', 'CANCELADO'],
+  EM_ANDAMENTO: ['CONCLUIDO', 'CANCELADO'],
+  CONCLUIDO: [],
+  CANCELADO: []
+};
 
 router.get('/mine', authenticate, async (req, res, next) => {
   try {
@@ -26,6 +34,9 @@ router.get('/mine', authenticate, async (req, res, next) => {
         p.method AS payment_method,
         p.pix_code,
         p.pix_qr_payload,
+        p.boleto_code,
+        p.boleto_digitable_line,
+        p.boleto_due_date,
         p.card_brand,
         p.card_last4,
         p.provider_fee_status,
@@ -56,7 +67,7 @@ router.post('/', authenticate, authorize('CLIENTE'), async (req, res, next) => {
     return res.status(400).json({ message: 'Informe o servico desejado.' });
   }
 
-  if (!['PIX', 'CARTAO_CREDITO', 'CARTAO_DEBITO', 'DINHEIRO'].includes(paymentMethod)) {
+  if (!['PIX', 'CARTAO_CREDITO', 'CARTAO_DEBITO', 'DINHEIRO', 'BOLETO'].includes(paymentMethod)) {
     return res.status(400).json({ message: 'Forma de pagamento invalida.' });
   }
 
@@ -76,7 +87,22 @@ router.post('/', authenticate, authorize('CLIENTE'), async (req, res, next) => {
       `SELECT p.id, p.max_requests_per_month
       FROM client_subscriptions cs
       JOIN plans p ON p.id = cs.plan_id
-      WHERE cs.client_id = ? AND cs.status = 'ATIVA' AND p.target_role = 'CLIENTE' AND p.is_active = TRUE
+      WHERE cs.client_id = ?
+        AND cs.status = 'ATIVA'
+        AND (cs.ends_at IS NULL OR cs.ends_at > NOW())
+        AND p.target_role = 'CLIENTE'
+        AND p.is_active = TRUE
+        AND (
+          p.monthly_price = 0
+          OR EXISTS (
+            SELECT 1
+            FROM plan_billing pb
+            WHERE pb.user_id = cs.client_id
+              AND pb.target_role = 'CLIENTE'
+              AND pb.plan_id = cs.plan_id
+              AND pb.status = 'PAGO'
+          )
+        )
       ORDER BY cs.created_at DESC
       LIMIT 1`,
       [req.user.id]
@@ -126,7 +152,7 @@ router.post('/', authenticate, authorize('CLIENTE'), async (req, res, next) => {
         COALESCE(p.commission_rate, 12.00) AS commission_rate
       FROM services s
       LEFT JOIN provider_subscriptions ps
-        ON ps.provider_id = s.provider_id AND ps.status = 'ATIVA'
+        ON ps.provider_id = s.provider_id AND ps.status = 'ATIVA' AND (ps.ends_at IS NULL OR ps.ends_at > NOW())
       LEFT JOIN plans p
         ON p.id = ps.plan_id AND p.target_role = 'PRESTADOR' AND p.is_active = TRUE
       WHERE s.id = ? AND s.status = 'ATIVO'
@@ -171,11 +197,16 @@ router.post('/', authenticate, authorize('CLIENTE'), async (req, res, next) => {
     };
     let paymentStatus = 'PENDENTE';
     let pix = { code: null, payload: null };
+    let boleto = { code: null, digitableLine: null, dueDate: null };
     let cardSummary = { brand: null, last4: null };
     let providerFeeStatus = 'NAO_APLICA';
 
     if (paymentMethod === 'PIX') {
       pix = generatePixPayload({ requestId: request.id, amount: totalAmount, payerName: req.user.name });
+    }
+
+    if (paymentMethod === 'BOLETO') {
+      boleto = generateBoletoPayload({ referenceId: request.id, amount: totalAmount, payerName: req.user.name });
     }
 
     if (paymentMethod.startsWith('CARTAO')) {
@@ -190,8 +221,8 @@ router.post('/', authenticate, authorize('CLIENTE'), async (req, res, next) => {
 
     await connection.execute(
       `INSERT INTO payments
-        (request_id, payer_id, amount, method, status, pix_code, pix_qr_payload, card_brand, card_last4, provider_fee_status, paid_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (request_id, payer_id, amount, method, status, pix_code, pix_qr_payload, boleto_code, boleto_digitable_line, boleto_due_date, card_brand, card_last4, provider_fee_status, paid_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         request.id,
         req.user.id,
@@ -200,6 +231,9 @@ router.post('/', authenticate, authorize('CLIENTE'), async (req, res, next) => {
         paymentStatus,
         pix.code,
         pix.payload,
+        boleto.code,
+        boleto.digitableLine,
+        boleto.dueDate,
         cardSummary.brand,
         cardSummary.last4,
         providerFeeStatus,
@@ -217,14 +251,20 @@ router.post('/', authenticate, authorize('CLIENTE'), async (req, res, next) => {
       message:
         paymentMethod === 'PIX'
           ? 'Solicitacao criada. Use o QR Code PIX para concluir o pagamento.'
-          : paymentMethod === 'DINHEIRO'
-            ? 'Solicitacao criada com pagamento em dinheiro ao prestador. A taxa da plataforma foi registrada.'
-            : 'Solicitacao criada e pagamento aprovado pelo sistema.',
+          : paymentMethod === 'BOLETO'
+            ? 'Solicitacao criada. Use o boleto para concluir o pagamento.'
+            : paymentMethod === 'DINHEIRO'
+              ? 'Solicitacao criada com pagamento em dinheiro ao prestador. A taxa da plataforma foi registrada.'
+              : 'Solicitacao criada e pagamento aprovado pelo sistema.',
       payment: {
         method: paymentMethod,
         status: paymentStatus,
+        amount: totalAmount,
         pix_code: pix.code,
         pix_qr_payload: pix.payload,
+        boleto_code: boleto.code,
+        boleto_digitable_line: boleto.digitableLine,
+        boleto_due_date: boleto.dueDate,
         card_brand: cardSummary.brand,
         card_last4: cardSummary.last4,
         provider_fee_status: providerFeeStatus
@@ -283,6 +323,18 @@ router.patch('/:id/status', authenticate, authorize('CLIENTE', 'PRESTADOR', 'ADM
     if (!request) {
       await connection.rollback();
       return res.status(404).json({ message: 'Solicitacao nao encontrada.' });
+    }
+
+    if (request.status === status) {
+      await connection.rollback();
+      return res.json({ message: 'A solicitacao ja esta neste status.' });
+    }
+
+    if (!allowedStatusTransitions[request.status]?.includes(status)) {
+      await connection.rollback();
+      return res.status(409).json({
+        message: `Transicao de status invalida: ${request.status} -> ${status}.`
+      });
     }
 
     if (req.user.role === 'CLIENTE') {
@@ -418,15 +470,30 @@ router.delete('/:id', authenticate, authorize('CLIENTE', 'PRESTADOR'), async (re
       return res.status(404).json({ message: 'Solicitacao nao encontrada.' });
     }
 
-    if (!['CONCLUIDO', 'CANCELADO'].includes(request.status)) {
+    if (request.status !== 'CANCELADO') {
       await connection.rollback();
-      return res.status(409).json({ message: 'Somente solicitacoes concluidas ou canceladas podem ser excluidas.' });
+      return res.status(409).json({
+        message: 'Por integridade do historico, somente solicitacoes canceladas podem ser excluidas.'
+      });
+    }
+
+    const [financialRows] = await connection.execute(
+      `SELECT
+        (SELECT COUNT(*) FROM financial_transactions WHERE request_id = ?) AS transactions_count,
+        (SELECT COUNT(*) FROM payments WHERE request_id = ? AND status IN ('PAGO', 'ESTORNADO')) AS settled_payments_count`,
+      [request.id, request.id]
+    );
+
+    if (Number(financialRows[0]?.transactions_count || 0) > 0 || Number(financialRows[0]?.settled_payments_count || 0) > 0) {
+      await connection.rollback();
+      return res.status(409).json({
+        message: 'Esta solicitacao possui historico financeiro consolidado e nao pode ser excluida fisicamente.'
+      });
     }
 
     await connection.execute('DELETE FROM service_request_messages WHERE request_id = ?', [request.id]);
     await connection.execute('DELETE FROM reviews WHERE request_id = ?', [request.id]);
     await connection.execute('DELETE FROM payments WHERE request_id = ?', [request.id]);
-    await connection.execute('DELETE FROM financial_transactions WHERE request_id = ?', [request.id]);
     await connection.execute('DELETE FROM service_requests WHERE id = ?', [request.id]);
 
     await connection.commit();
@@ -452,7 +519,8 @@ router.patch('/:id/pay', authenticate, authorize('ADMIN'), async (req, res, next
         sr.total_amount,
         sr.platform_fee,
         sr.provider_amount,
-        p.status AS payment_status
+        p.status AS payment_status,
+        p.method AS payment_method
       FROM service_requests sr
       LEFT JOIN payments p ON p.request_id = sr.id
       WHERE sr.id = ?
@@ -466,9 +534,19 @@ router.patch('/:id/pay', authenticate, authorize('ADMIN'), async (req, res, next
       return res.status(404).json({ message: 'Solicitacao nao encontrada.' });
     }
 
+    if (!request.payment_status) {
+      await connection.rollback();
+      return res.status(409).json({ message: 'A solicitacao nao possui registro de pagamento.' });
+    }
+
     if (request.payment_status === 'PAGO') {
       await connection.rollback();
       return res.json({ message: 'Pagamento ja estava confirmado.' });
+    }
+
+    if (request.payment_status === 'ESTORNADO') {
+      await connection.rollback();
+      return res.status(409).json({ message: 'Pagamento estornado nao pode ser confirmado novamente automaticamente.' });
     }
 
     await connection.execute(
@@ -488,6 +566,12 @@ router.patch('/:id/pay', authenticate, authorize('ADMIN'), async (req, res, next
 });
 
 router.patch('/:id/confirm-payment', authenticate, authorize('CLIENTE'), async (req, res, next) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(403).json({
+      message: 'Confirmacao manual de pagamento esta desativada em producao. Use a confirmacao do provedor de pagamento.'
+    });
+  }
+
   const connection = await pool.getConnection();
 
   try {
@@ -520,9 +604,9 @@ router.patch('/:id/confirm-payment', authenticate, authorize('CLIENTE'), async (
       return res.json({ message: 'Pagamento ja estava confirmado.' });
     }
 
-    if (request.payment_method !== 'PIX') {
+    if (!['PIX', 'BOLETO'].includes(request.payment_method)) {
       await connection.rollback();
-      return res.status(400).json({ message: 'A confirmacao manual esta disponivel apenas para PIX pendente.' });
+      return res.status(400).json({ message: 'A confirmacao manual esta disponivel apenas para PIX ou boleto pendente.' });
     }
 
     await connection.execute(
@@ -532,7 +616,7 @@ router.patch('/:id/confirm-payment', authenticate, authorize('CLIENTE'), async (
     await applySystemPayment(connection, request);
 
     await connection.commit();
-    return res.json({ message: 'Pagamento PIX confirmado e repasse reservado ao prestador.' });
+    return res.json({ message: 'Pagamento ' + (request.payment_method === 'BOLETO' ? 'por boleto' : 'PIX') + ' confirmado e repasse reservado ao prestador.' });
   } catch (error) {
     await connection.rollback();
     return next(error);

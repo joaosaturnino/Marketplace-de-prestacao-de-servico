@@ -58,8 +58,10 @@ router.get('/', authenticate, async (req, res, next) => {
 
 router.patch('/', authenticate, async (req, res, next) => {
   const { name, email, phone, city, state, address, document, bio } = req.body;
+  const normalizedName = String(name || '').trim();
+  const normalizedEmail = String(email || '').trim().toLowerCase();
 
-  if (!name || !email) {
+  if (!normalizedName || !normalizedEmail) {
     return res.status(400).json({ message: 'Nome e email sao obrigatorios.' });
   }
 
@@ -70,7 +72,7 @@ router.patch('/', authenticate, async (req, res, next) => {
 
     await connection.execute(
       'UPDATE users SET name = ?, email = ? WHERE id = ?',
-      [name, email, req.user.id]
+      [normalizedName, normalizedEmail, req.user.id]
     );
 
     if (req.user.role === 'CLIENTE') {
@@ -98,7 +100,7 @@ router.patch('/', authenticate, async (req, res, next) => {
 
     await connection.commit();
 
-    const user = { id: req.user.id, name, email, role: req.user.role };
+    const user = { id: req.user.id, name: normalizedName, email: normalizedEmail, role: req.user.role };
     const profile = await getProfile(user);
     return res.json({ token: signUser(user), user, profile, message: 'Perfil atualizado com sucesso.' });
   } catch (error) {

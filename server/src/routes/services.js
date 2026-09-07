@@ -103,7 +103,22 @@ router.post('/', authenticate, authorize('PRESTADOR'), async (req, res, next) =>
       `SELECT p.max_services
       FROM provider_subscriptions ps
       JOIN plans p ON p.id = ps.plan_id
-      WHERE ps.provider_id = ? AND ps.status = 'ATIVA' AND p.target_role = 'PRESTADOR' AND p.is_active = TRUE
+      WHERE ps.provider_id = ?
+        AND ps.status = 'ATIVA'
+        AND (ps.ends_at IS NULL OR ps.ends_at > NOW())
+        AND p.target_role = 'PRESTADOR'
+        AND p.is_active = TRUE
+        AND (
+          p.monthly_price = 0
+          OR EXISTS (
+            SELECT 1
+            FROM plan_billing pb
+            WHERE pb.user_id = ps.provider_id
+              AND pb.target_role = 'PRESTADOR'
+              AND pb.plan_id = ps.plan_id
+              AND pb.status = 'PAGO'
+          )
+        )
       ORDER BY ps.created_at DESC
       LIMIT 1`,
       [req.user.id]

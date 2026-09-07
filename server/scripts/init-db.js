@@ -12,6 +12,7 @@ const envPath = path.resolve(__dirname, '..', '.env');
 dotenv.config({ path: envPath });
 
 let connection;
+const databaseName = process.env.DB_NAME || 'prestacao_servicos';
 
 try {
   connection = await mysql.createConnection({
@@ -25,9 +26,16 @@ try {
   const schema = await fs.readFile(path.join(rootDir, 'database', 'schema.sql'), 'utf8');
   const seed = await fs.readFile(path.join(rootDir, 'database', 'seed.sql'), 'utf8');
 
-  await connection.query(schema);
-  await runMigrations(connection, process.env.DB_NAME || 'prestacao_servicos');
-  await connection.query(seed);
+  try {
+    await connection.query(`CREATE DATABASE IF NOT EXISTS ${connection.escapeId(databaseName)} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
+  } catch (error) {
+    if (error.code !== 'ER_DBACCESS_DENIED_ERROR') throw error;
+  }
+
+  await connection.query(`USE ${connection.escapeId(databaseName)}`);
+  await connection.query(stripDatabaseDirectives(schema));
+  await runMigrations(connection, databaseName);
+  await connection.query(stripDatabaseDirectives(seed));
   await backfillProviderBalances(connection);
   console.log('Banco MySQL inicializado com sucesso.');
 } catch (error) {
@@ -42,6 +50,12 @@ try {
   }
 } finally {
   await connection?.end();
+}
+
+function stripDatabaseDirectives(sql) {
+  return sql
+    .replace(/^\s*CREATE DATABASE IF NOT EXISTS[^;]+;\s*/im, '')
+    .replace(/^\s*USE\s+[^;]+;\s*/im, '');
 }
 
 async function runMigrations(connection, databaseName) {
@@ -79,6 +93,27 @@ async function runMigrations(connection, databaseName) {
     connection,
     databaseName,
     'payments',
+    'boleto_code',
+    'ALTER TABLE payments ADD COLUMN boleto_code VARCHAR(48) NULL AFTER pix_qr_payload'
+  );
+  await addColumnIfMissing(
+    connection,
+    databaseName,
+    'payments',
+    'boleto_digitable_line',
+    'ALTER TABLE payments ADD COLUMN boleto_digitable_line VARCHAR(100) NULL AFTER boleto_code'
+  );
+  await addColumnIfMissing(
+    connection,
+    databaseName,
+    'payments',
+    'boleto_due_date',
+    'ALTER TABLE payments ADD COLUMN boleto_due_date DATE NULL AFTER boleto_digitable_line'
+  );
+  await addColumnIfMissing(
+    connection,
+    databaseName,
+    'payments',
     'card_brand',
     'ALTER TABLE payments ADD COLUMN card_brand VARCHAR(40) NULL AFTER pix_qr_payload'
   );
@@ -105,11 +140,11 @@ async function runMigrations(connection, databaseName) {
   );
 
   await connection.query(
-    "ALTER TABLE payments MODIFY COLUMN method ENUM('PIX', 'CARTAO', 'CARTAO_CREDITO', 'CARTAO_DEBITO', 'DINHEIRO') NOT NULL DEFAULT 'PIX'"
+    "ALTER TABLE payments MODIFY COLUMN method ENUM('PIX', 'CARTAO', 'CARTAO_CREDITO', 'CARTAO_DEBITO', 'DINHEIRO', 'BOLETO') NOT NULL DEFAULT 'PIX'"
   );
   await connection.query("UPDATE payments SET method = 'CARTAO_CREDITO' WHERE method = 'CARTAO'");
   await connection.query(
-    "ALTER TABLE payments MODIFY COLUMN method ENUM('PIX', 'CARTAO_CREDITO', 'CARTAO_DEBITO', 'DINHEIRO') NOT NULL DEFAULT 'PIX'"
+    "ALTER TABLE payments MODIFY COLUMN method ENUM('PIX', 'CARTAO_CREDITO', 'CARTAO_DEBITO', 'DINHEIRO', 'BOLETO') NOT NULL DEFAULT 'PIX'"
   );
   await connection.query(
     "ALTER TABLE financial_transactions MODIFY COLUMN type ENUM('ENTRADA', 'TAXA_PLATAFORMA', 'REPASSE_PRESTADOR', 'ESTORNO', 'TAXA_DINHEIRO_COBRADA', 'TAXA_DINHEIRO_PENDENTE', 'TAXA_DINHEIRO_COMPENSADA', 'SAQUE_PRESTADOR') NOT NULL"
@@ -125,6 +160,38 @@ async function runMigrations(connection, databaseName) {
       FOREIGN KEY (request_id) REFERENCES service_requests(id) ON DELETE CASCADE,
       FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE
     )`
+  );
+
+  await connection.query(
+    `CREATE TABLE IF NOT EXISTS plan_billing (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      user_id INT NOT NULL,
+      target_role ENUM('CLIENTE', 'PRESTADOR') NOT NULL,
+      plan_id INT NOT NULL,
+      amount DECIMAL(10,2) NOT NULL,
+      status ENUM('PENDENTE', 'PAGO', 'CANCELADO') NOT NULL DEFAULT 'PENDENTE',
+      boleto_code VARCHAR(48) NOT NULL,
+      digitable_line VARCHAR(100) NOT NULL,
+      due_date DATE NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (plan_id) REFERENCES plans(id)
+    )`
+  );
+
+  await addColumnIfMissing(
+    connection,
+    databaseName,
+    'plan_billing',
+    'paid_at',
+    'ALTER TABLE plan_billing ADD COLUMN paid_at DATETIME NULL AFTER due_date'
+  );
+  await addColumnIfMissing(
+    connection,
+    databaseName,
+    'plan_billing',
+    'canceled_at',
+    'ALTER TABLE plan_billing ADD COLUMN canceled_at DATETIME NULL AFTER paid_at'
   );
 }
 

@@ -17,13 +17,13 @@ router.post('/', authenticate, authorize('ADMIN'), async (req, res, next) => {
   try {
     const { name, description } = req.body;
 
-    if (!name) {
+    if (!String(name || '').trim()) {
       return res.status(400).json({ message: 'Nome da categoria e obrigatorio.' });
     }
 
     const result = await query(
       'INSERT INTO service_categories (name, description) VALUES (?, ?)',
-      [name, description || null]
+      [String(name).trim(), description ? String(description).trim() : null]
     );
 
     return res.status(201).json({ id: result.insertId, message: 'Categoria criada com sucesso.' });
@@ -43,7 +43,7 @@ router.patch('/:id', authenticate, authorize('ADMIN'), async (req, res, next) =>
 
     if (name !== undefined) {
       updates.push('name = ?');
-      params.push(name);
+      params.push(String(name).trim());
     }
 
     if (description !== undefined) {

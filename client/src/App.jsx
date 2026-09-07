@@ -4,6 +4,7 @@ import {
   CalendarDays,
   CheckCircle2,
   ClipboardList,
+  Copy,
   Clock3,
   CreditCard,
   LayoutDashboard,
@@ -11,6 +12,7 @@ import {
   MessageSquareText,
   Moon,
   Pencil,
+  Printer,
   Plus,
   Search,
   ShieldCheck,
@@ -46,6 +48,7 @@ const navItems = {
     { id: 'services', label: 'Buscar servicos', icon: Search },
     { id: 'requests', label: 'Minhas solicitacoes', icon: ClipboardList },
     { id: 'payments', label: 'Pagamentos', icon: CreditCard },
+    { id: 'boletos', label: 'Boletos', icon: ReceiptText },
     { id: 'plans', label: 'Planos', icon: ShieldCheck },
     { id: 'profile', label: 'Meu perfil', icon: UserCog }
   ],
@@ -53,6 +56,7 @@ const navItems = {
     { id: 'services', label: 'Meus servicos', icon: BriefcaseBusiness },
     { id: 'requests', label: 'Solicitacoes', icon: ClipboardList },
     { id: 'finance', label: 'Financeiro', icon: WalletCards },
+    { id: 'boletos', label: 'Boletos', icon: ReceiptText },
     { id: 'payouts', label: 'Saques', icon: Banknote },
     { id: 'plans', label: 'Planos', icon: ShieldCheck },
     { id: 'reviews', label: 'Avaliacoes', icon: Star },
@@ -62,6 +66,7 @@ const navItems = {
   ADMIN: [
     { id: 'overview', label: 'Visao geral', icon: LayoutDashboard },
     { id: 'finance', label: 'Financeiro', icon: WalletCards },
+    { id: 'boletos', label: 'Boletos', icon: ReceiptText },
     { id: 'withdrawals', label: 'Saques', icon: Banknote },
     { id: 'plans', label: 'Planos', icon: ShieldCheck },
     { id: 'users', label: 'Usuarios', icon: UsersRound },
@@ -112,11 +117,32 @@ const columnLabels = {
 
 function useAuth() {
   const [user, setUser] = useState(() => {
-    const saved = localStorage.getItem('user');
-    return saved ? JSON.parse(saved) : null;
+    try {
+      const saved = localStorage.getItem('user');
+      if (!saved) return null;
+
+      const parsed = JSON.parse(saved);
+      return parsed?.role && defaultViews[parsed.role] ? parsed : null;
+    } catch {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      return null;
+    }
   });
 
+  useEffect(() => {
+    function handleExpiredSession() {
+      setUser(null);
+    }
+    window.addEventListener('auth:expired', handleExpiredSession);
+    return () => window.removeEventListener('auth:expired', handleExpiredSession);
+  }, []);
+
   function saveSession(session) {
+    if (!session?.token || !session?.user?.role || !defaultViews[session.user.role]) {
+      throw new Error('Sessao invalida recebida da API.');
+    }
+
     localStorage.setItem('token', session.token);
     localStorage.setItem('user', JSON.stringify(session.user));
     setUser(session.user);
@@ -650,7 +676,7 @@ function ClientDashboard({ view }) {
       });
       setPaymentResult(result.payment ? { requestId: result.id, ...result.payment } : null);
       setMessage(result.message || 'Solicitacao enviada ao prestador.');
-      if (requestForm.paymentMethod !== 'PIX') {
+      if (!['PIX', 'BOLETO'].includes(requestForm.paymentMethod)) {
         setSelected(null);
         resetRequestForm();
       }
@@ -901,6 +927,10 @@ function ClientDashboard({ view }) {
         <ClientPaymentsDashboard requests={requests} onConfirmPix={confirmPixPayment} />
       )}
 
+      {view === 'boletos' && (
+        <BoletoDashboard requests={requests} billings={planInfo.billings} onConfirmPayment={confirmPixPayment} />
+      )}
+
       {view === 'plans' && (
         <ClientPlansDashboard planInfo={planInfo} onChanged={refreshPlans} />
       )}
@@ -938,6 +968,7 @@ function ClientDashboard({ view }) {
                 onChange={(event) => setRequestForm((current) => ({ ...current, paymentMethod: event.target.value }))}
               >
                 <option value="PIX">PIX</option>
+                <option value="BOLETO">Boleto</option>
                 <option value="CARTAO_CREDITO">Cartao de credito</option>
                 <option value="CARTAO_DEBITO">Cartao de debito</option>
                 <option value="DINHEIRO">Dinheiro</option>
@@ -947,6 +978,12 @@ function ClientDashboard({ view }) {
               <div className="payment-method-note">
                 <strong>Pagamento por PIX</strong>
                 <span>Ao confirmar, o sistema gera um QR Code para o cliente pagar e liberar o repasse ao prestador.</span>
+              </div>
+            )}
+            {requestForm.paymentMethod === 'BOLETO' && (
+              <div className="payment-method-note">
+                <strong>Pagamento por boleto</strong>
+                <span>O pedido fica pendente ate o boleto ser confirmado. Em testes, voce pode marcar como pago pelo sistema.</span>
               </div>
             )}
             {requestForm.paymentMethod.startsWith('CARTAO') && (
@@ -992,7 +1029,7 @@ function ClientDashboard({ view }) {
             <div className="modal-actions">
               <button type="button" onClick={() => { setSelected(null); resetRequestForm(); }}>Cancelar</button>
               {paymentResult?.pix_qr_payload ? (
-                <button className="primary" type="button" onClick={confirmPixFromModal}>Ja paguei, finalizar</button>
+                <button className="primary" type="button" onClick={confirmPixFromModal}>Ja paguei, finalizar teste</button>
               ) : (
                 <button className="primary" type="submit" disabled={requesting}>
                   {requesting ? 'Processando...' : 'Confirmar'}
@@ -1078,7 +1115,7 @@ function ClientRequestsDashboard({ requests, onSubmitReview, onCancelRequest, on
                     <XCircle size={16} /> Cancelar
                   </button>
                 )}
-                {['CONCLUIDO', 'CANCELADO'].includes(request.status) && (
+                {request.status === 'CANCELADO' && (
                   <button type="button" onClick={() => onDeleteRequest(request.id)}>
                     <Trash2 size={16} /> Excluir
                   </button>
@@ -1207,7 +1244,7 @@ function ClientPaymentsDashboard({ requests, onConfirmPix }) {
       <div className="section-heading">
         <div>
           <h2>Pagamentos dos servicos</h2>
-          <p>Acompanhe PIX, cartao e dinheiro, incluindo pagamentos pendentes e comprovacao interna.</p>
+          <p>Acompanhe PIX, boleto, cartao e dinheiro, incluindo pagamentos pendentes e comprovacao interna.</p>
         </div>
       </div>
 
@@ -1215,44 +1252,225 @@ function ClientPaymentsDashboard({ requests, onConfirmPix }) {
         {requests.length === 0 ? (
           <div className="empty">Nenhum pagamento encontrado.</div>
         ) : (
-          requests.map((request) => (
-            <article className="finance-row payment-row" key={request.id}>
-              <div className="finance-row-main">
-                <strong>{request.service_title}</strong>
-                <span>{request.provider_name} - {formatPaymentMethod(request.payment_method)}</span>
-              </div>
-              <div className="finance-values">
-                <div>
-                  <span>Total</span>
-                  <strong>{currency.format(request.total_amount || 0)}</strong>
+          requests.map((request) => {
+            const canConfirm = ['PIX', 'BOLETO'].includes(request.payment_method) && request.payment_status !== 'PAGO';
+            const reference = request.pix_code || request.boleto_code || request.card_last4 || '-';
+            return (
+              <article className="finance-row payment-row" key={request.id}>
+                <div className="finance-row-main">
+                  <strong>{request.service_title}</strong>
+                  <span>{request.provider_name} - {formatPaymentMethod(request.payment_method)}</span>
                 </div>
-                <div>
-                  <span>Pagamento</span>
-                  <strong>{request.payment_status || 'PENDENTE'}</strong>
+                <div className="finance-values">
+                  <div>
+                    <span>Total</span>
+                    <strong>{currency.format(request.total_amount || 0)}</strong>
+                  </div>
+                  <div>
+                    <span>Pagamento</span>
+                    <strong>{request.payment_status || 'PENDENTE'}</strong>
+                  </div>
+                  <div>
+                    <span>Referencia</span>
+                    <strong>{reference}</strong>
+                  </div>
                 </div>
-                <div>
-                  <span>Referencia</span>
-                  <strong>{request.pix_code || request.card_last4 || '-'}</strong>
+                <div className="finance-actions">
+                  <StatusBadge value={request.payment_status || 'PENDENTE'} />
+                  {canConfirm ? (
+                    <button type="button" onClick={() => onConfirmPix(request.id)}>Confirmar {request.payment_method === 'BOLETO' ? 'boleto' : 'PIX'}</button>
+                  ) : (
+                    <small>{request.paid_at ? `Pago em ${formatCell('paid_at', request.paid_at)}` : 'Aguardando'}</small>
+                  )}
                 </div>
-              </div>
-              <div className="finance-actions">
-                <StatusBadge value={request.payment_status || 'PENDENTE'} />
-                {request.payment_method === 'PIX' && request.payment_status !== 'PAGO' ? (
-                  <button type="button" onClick={() => onConfirmPix(request.id)}>Confirmar PIX</button>
-                ) : (
-                  <small>{request.paid_at ? `Pago em ${formatCell('paid_at', request.paid_at)}` : 'Aguardando'}</small>
+                {request.pix_qr_payload && request.payment_status !== 'PAGO' && (
+                  <div className="pix-box compact-pix">
+                    <div className="pix-qr">{request.pix_code}</div>
+                    <span>{request.pix_qr_payload}</span>
+                  </div>
                 )}
-              </div>
-              {request.pix_qr_payload && request.payment_status !== 'PAGO' && (
-                <div className="pix-box compact-pix">
-                  <div className="pix-qr">{request.pix_code}</div>
-                  <span>{request.pix_qr_payload}</span>
-                </div>
-              )}
-            </article>
-          ))
+              </article>
+            );
+          })
         )}
       </div>
+    </section>
+  );
+}
+
+function PlanBoleto({ payment, title = 'Boleto da assinatura', description = 'Use a linha digitavel abaixo para pagar o plano selecionado.', compact = false }) {
+  const [copied, setCopied] = useState(false);
+  const digitableLine = payment.digitable_line || payment.boleto_digitable_line;
+  const boletoCode = payment.boleto_code;
+  const dueDate = payment.due_date || payment.boleto_due_date;
+  const printId = `boleto-${payment.id || boletoCode || 'recente'}`;
+  const isPaid = (payment.status || payment.payment_status) === 'PAGO';
+  const isOverdue = dueDate && !isPaid && new Date(`${dueDate}T23:59:59`).getTime() < Date.now();
+  const formattedLine = formatBoletoLine(digitableLine);
+
+  async function copyLine() {
+    if (!digitableLine) return;
+    try {
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(digitableLine);
+      } else {
+        const input = document.createElement('textarea');
+        input.value = digitableLine;
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand('copy');
+        input.remove();
+      }
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2200);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  async function copyBarcode() {
+    if (!boletoCode) return;
+    try {
+      await navigator.clipboard?.writeText(boletoCode);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2200);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  function printBoleto() {
+    const boleto = document.getElementById(printId);
+    if (!boleto) return;
+    const printWindow = window.open('', '_blank', 'width=760,height=860');
+    if (!printWindow) return;
+    printWindow.document.write(`<!doctype html><html><head><title>${title}</title><style>body{margin:0;padding:32px;font-family:Arial,sans-serif;color:#18212f} .print-boleto{max-width:680px;margin:auto;border:1px solid #c5d0da;border-top:5px solid #0f766e;border-radius:10px;padding:24px} h2{margin:10px 0 8px} p{color:#667587;line-height:1.5} .summary{display:flex;gap:12px;margin:24px 0}.summary div{flex:1;padding:14px;border:1px solid #d9e1e8;border-radius:8px;background:#f3f6f8}.label{display:block;color:#667587;font-size:12px;text-transform:uppercase;font-weight:bold;margin-bottom:6px}.line{padding:16px;border:1px dashed #9aa8b6;border-radius:8px;background:#f3f6f8;font:16px monospace;overflow-wrap:anywhere}.code{margin-top:18px;color:#667587;font-size:12px}</style></head><body><div class="print-boleto">${boleto.querySelector('.boleto-head')?.outerHTML || ''}${boleto.querySelector('.boleto-summary')?.outerHTML || ''}${boleto.querySelector('.boleto-line-label')?.outerHTML || ''}${boleto.querySelector('.boleto-line')?.outerHTML || ''}${boleto.querySelector('.boleto-footer')?.outerHTML || ''}</div></body></html>`);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+    printWindow.close();
+  }
+
+  return (
+    <section className={`boleto-box ${compact ? 'compact-boleto' : ''}`} id={printId}>
+      <div className="boleto-head">
+        <div>
+          <span className="eyebrow"><ReceiptText size={16} /> {title}</span>
+          <h3>{payment.plan_name || payment.service_title || 'Cobrança da plataforma'}</h3>
+          <p>{description}</p>
+        </div>
+        <div className="boleto-status-stack">
+          <StatusBadge value={payment.status || payment.payment_status || 'PENDENTE'} />
+          {isOverdue && <span className="boleto-overdue">Vencido</span>}
+        </div>
+      </div>
+      <div className="boleto-summary">
+        <div>
+          <span>Valor do boleto</span>
+          <strong>{currency.format(payment.amount || payment.total_amount || 0)}</strong>
+        </div>
+        <div>
+          <span>Vencimento</span>
+          <strong className={isOverdue ? 'boleto-date-overdue' : ''}>{formatDateOnly(dueDate)}</strong>
+        </div>
+      </div>
+      <div className="boleto-line-label">
+        <span>Linha digitável</span>
+        <small>Copie e cole no aplicativo do seu banco</small>
+      </div>
+      <div className="boleto-line">
+        <strong>{formattedLine || 'Linha digitável indisponível'}</strong>
+        <button type="button" className="icon-button" onClick={copyLine} disabled={!digitableLine} title="Copiar linha digitável" aria-label="Copiar linha digitável">
+          {copied ? <CheckCircle2 size={16} /> : <Copy size={16} />}
+        </button>
+      </div>
+      <div className="boleto-footer">
+        <small>Código de barras: {boletoCode || '-'}</small>
+        <div className="boleto-actions">
+          <button type="button" onClick={copyBarcode} disabled={!boletoCode} title="Copiar código de barras"><Copy size={16} /> Copiar código</button>
+          <button type="button" onClick={printBoleto} title="Imprimir boleto"><Printer size={16} /> Imprimir</button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function BoletoDashboard({ requests = [], billings = [], admin = false, onConfirmPayment, onBillingStatusChange }) {
+  const [filter, setFilter] = useState('TODOS');
+  const serviceBoletos = requests.filter((request) => request.payment_method === 'BOLETO' && request.boleto_digitable_line);
+  const planBoletos = billings.filter((billing) => billing.boleto_digitable_line || billing.digitable_line);
+  const allBoletos = [
+    ...serviceBoletos.map((boleto) => ({ ...boleto, boletoType: 'SERVICO', boletoStatus: boleto.payment_status || 'PENDENTE' })),
+    ...planBoletos.map((boleto) => ({ ...boleto, boletoType: 'PLANO', boletoStatus: boleto.status || 'PENDENTE' }))
+  ];
+  const visibleBoletos = filter === 'TODOS' ? allBoletos : allBoletos.filter((boleto) => boleto.boletoStatus === filter);
+  const pendingCount = allBoletos.filter((boleto) => boleto.boletoStatus === 'PENDENTE').length;
+  const paidCount = allBoletos.filter((boleto) => boleto.boletoStatus === 'PAGO').length;
+  const totalAmount = allBoletos.reduce((total, boleto) => total + Number(boleto.amount || boleto.total_amount || 0), 0);
+
+  return (
+    <section className="section active-section boleto-dashboard">
+      <div className="section-heading">
+        <div>
+          <span className="eyebrow"><ReceiptText size={16} /> Central financeira</span>
+          <h2>Boletos</h2>
+          <p>Encontre suas cobranças, copie os dados de pagamento e acompanhe o vencimento em um só lugar.</p>
+        </div>
+      </div>
+
+      <section className="boleto-dashboard-summary">
+        <article><span>Total em boletos</span><strong>{currency.format(totalAmount)}</strong></article>
+        <article><span>Pendentes</span><strong>{pendingCount}</strong></article>
+        <article><span>Pagos</span><strong>{paidCount}</strong></article>
+      </section>
+
+      <div className="boleto-filters" role="group" aria-label="Filtrar boletos">
+        {[
+          ['TODOS', 'Todos'],
+          ['PENDENTE', 'Pendentes'],
+          ['PAGO', 'Pagos']
+        ].map(([value, label]) => (
+          <button className={filter === value ? 'active' : ''} type="button" key={value} onClick={() => setFilter(value)}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {visibleBoletos.length === 0 ? (
+        <div className="empty">Nenhum boleto encontrado para este filtro.</div>
+      ) : (
+        <div className="boleto-dashboard-list">
+          {visibleBoletos.map((boleto) => (
+            <article className="boleto-dashboard-item" key={`${boleto.boletoType}-${boleto.id}`}>
+              <div className="boleto-dashboard-item-head">
+                <div>
+                  <span className="eyebrow">{boleto.boletoType === 'PLANO' ? 'Boleto de plano' : 'Boleto de servico'}</span>
+                  <h3>{boleto.plan_name || boleto.service_title || 'Cobranca'}</h3>
+                  <p>{boleto.boletoType === 'PLANO' ? boleto.user_email || 'Assinatura da plataforma' : boleto.provider_name || boleto.client_name || 'Solicitacao de servico'}</p>
+                </div>
+                <StatusBadge value={boleto.boletoStatus} />
+              </div>
+              <PlanBoleto
+                payment={boleto}
+                title={boleto.boletoType === 'PLANO' ? `Boleto ${boleto.plan_name || ''}` : 'Boleto do servico'}
+                description={boleto.boletoType === 'PLANO' ? 'Cobranca da assinatura do plano.' : 'Cobranca gerada para esta solicitacao de servico.'}
+                compact
+              />
+              <div className="boleto-dashboard-actions">
+                {boleto.boletoType === 'SERVICO' && boleto.boletoStatus === 'PENDENTE' && onConfirmPayment && (
+                  <button className="primary" type="button" onClick={() => onConfirmPayment(boleto.id)}>Confirmar boleto</button>
+                )}
+                {admin && boleto.boletoType === 'PLANO' && boleto.boletoStatus === 'PENDENTE' && onBillingStatusChange && (
+                  <>
+                    <button className="primary" type="button" onClick={() => onBillingStatusChange(boleto.id, 'PAGO')}>Marcar pago</button>
+                    <button type="button" onClick={() => onBillingStatusChange(boleto.id, 'CANCELADO')}>Cancelar</button>
+                  </>
+                )}
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
     </section>
   );
 }
@@ -1260,9 +1478,14 @@ function ClientPaymentsDashboard({ requests, onConfirmPix }) {
 function ClientPlansDashboard({ planInfo, onChanged }) {
   const [message, setMessage] = useState('');
   const [loadingPlan, setLoadingPlan] = useState(null);
+  const [selectedPlanId, setSelectedPlanId] = useState(null);
   const subscription = planInfo.subscription;
+  const pendingPlanIds = new Set((planInfo.billings || []).filter((billing) => billing.status === 'PENDENTE').map((billing) => billing.plan_id));
+  const pendingBilling = (planInfo.billings || []).find((billing) => billing.status === 'PENDENTE');
+  const lockedPlanId = pendingBilling?.plan_id ?? selectedPlanId;
   const used = Number(planInfo.usage?.requests_count || 0);
   const limit = subscription?.max_requests_per_month;
+  const selectedPlan = planInfo.plans.find((plan) => plan.id === selectedPlanId);
 
   async function subscribe(planId) {
     setMessage('');
@@ -1274,6 +1497,24 @@ function ClientPlansDashboard({ planInfo, onChanged }) {
         body: JSON.stringify({ planId })
       });
       setMessage(result.message);
+      setSelectedPlanId(null);
+      await onChanged();
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setLoadingPlan(null);
+    }
+  }
+
+  async function cancelPendingPlan() {
+    if (!pendingBilling) return;
+    setMessage('');
+    setLoadingPlan(pendingBilling.plan_id);
+
+    try {
+      const result = await api(`/plans/billing/${pendingBilling.id}/cancel`, { method: 'PATCH' });
+      setMessage(result.message);
+      setSelectedPlanId(null);
       await onChanged();
     } catch (error) {
       setMessage(error.message);
@@ -1337,13 +1578,34 @@ function ClientPlansDashboard({ planInfo, onChanged }) {
           </div>
         </div>
 
+        {selectedPlan && (
+          <div className="plan-selection-bar">
+            <div>
+              <span className="eyebrow"><CheckCircle2 size={16} /> Plano selecionado</span>
+              <strong>{selectedPlan.name}</strong>
+              <small>{currency.format(selectedPlan.monthly_price)} por mes</small>
+            </div>
+            <div className="plan-selection-actions">
+              <button type="button" onClick={() => setSelectedPlanId(null)}>Trocar plano</button>
+              <button className="primary" type="button" disabled={loadingPlan === selectedPlan.id} onClick={() => subscribe(selectedPlan.id)}>
+                {loadingPlan === selectedPlan.id ? 'Gerando boleto...' : Number(selectedPlan.monthly_price) > 0 ? 'Confirmar e gerar boleto' : 'Confirmar plano gratuito'}
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="plans-grid">
           {planInfo.plans.map((plan) => {
             const isCurrent = subscription?.id === plan.id;
+            const isSelected = selectedPlanId === plan.id;
+            const exceedsRequestLimit = plan.max_requests_per_month !== null && plan.max_requests_per_month !== undefined && used >= Number(plan.max_requests_per_month);
+            const hasPendingBilling = pendingPlanIds.has(plan.id);
+            const isPendingPlan = pendingBilling?.plan_id === plan.id;
+            const blockedByPendingPlan = lockedPlanId && lockedPlanId !== plan.id;
             return (
-              <article className={`plan-card ${isCurrent ? 'selected' : ''}`} key={plan.id}>
+              <article className={`plan-card ${isCurrent ? 'chosen' : isSelected ? 'selected' : isPendingPlan ? 'pending' : ''}`} key={plan.id}>
                 <div className="plan-card-head">
-                  <span>{isCurrent ? 'Plano atual' : 'Disponivel'}</span>
+                  <span>{isCurrent ? 'Plano atual' : isPendingPlan ? 'Aguardando pagamento' : isSelected ? 'Selecionado' : blockedByPendingPlan ? 'Indisponivel' : 'Disponivel'}</span>
                   <StatusBadge value={plan.is_active ? 'ATIVO' : 'PAUSADO'} />
                 </div>
                 <h3>{plan.name}</h3>
@@ -1354,11 +1616,13 @@ function ClientPlansDashboard({ planInfo, onChanged }) {
                 </div>
                 <div className="plan-features">
                   <span><ClipboardList size={16} /> {formatRequestLimit(plan.max_requests_per_month)}</span>
-                  <span><CreditCard size={16} /> PIX, credito, debito e dinheiro</span>
+                  <span><CreditCard size={16} /> PIX, boleto, credito, debito e dinheiro</span>
                   <span><ShieldCheck size={16} /> {plan.support_level}</span>
                 </div>
-                <button className={isCurrent ? 'ghost' : 'primary'} type="button" disabled={isCurrent || loadingPlan === plan.id} onClick={() => subscribe(plan.id)}>
-                  {loadingPlan === plan.id ? 'Atualizando...' : isCurrent ? 'Plano selecionado' : 'Assinar plano'}
+                {exceedsRequestLimit && <small className="plan-warning">Limite de {plan.max_requests_per_month} solicitacoes por mes atingido. Voce ja utilizou {used}.</small>}
+                {hasPendingBilling && <small className="plan-pending">Plano selecionado. Aguardando confirmacao do pagamento.</small>}
+                <button className={isPendingPlan ? 'danger' : isCurrent ? 'primary selected-plan-button' : isSelected ? 'ghost' : exceedsRequestLimit || blockedByPendingPlan ? 'ghost' : 'primary'} type="button" disabled={isCurrent || exceedsRequestLimit || blockedByPendingPlan || (hasPendingBilling && loadingPlan === plan.id)} onClick={isPendingPlan ? cancelPendingPlan : () => setSelectedPlanId(plan.id)}>
+                  {isPendingPlan ? (loadingPlan === plan.id ? 'Cancelando...' : 'Cancelar plano') : isCurrent ? 'Plano atual' : isSelected ? 'Selecionado' : exceedsRequestLimit ? 'Limite mensal atingido' : blockedByPendingPlan ? 'Indisponivel enquanto houver plano selecionado' : 'Selecionar plano'}
                 </button>
               </article>
             );
@@ -1729,9 +1993,28 @@ function ProviderDashboard({ view }) {
                 <button type="button" onClick={() => openConversation(request)}>
                   <MessageSquareText size={16} /> Conversar
                 </button>
-                <button type="button" disabled={request.payment_status !== 'PAGO' || request.status !== 'SOLICITADO'} onClick={() => updateRequest(request.id, 'ACEITO')}>Aceitar</button>
-                <button type="button" disabled={request.payment_status !== 'PAGO'} onClick={() => updateRequest(request.id, 'CONCLUIDO')}>Concluir</button>
-                {['CONCLUIDO', 'CANCELADO'].includes(request.status) && (
+                <button
+                  type="button"
+                  disabled={request.payment_status !== 'PAGO' || request.status !== 'SOLICITADO'}
+                  onClick={() => updateRequest(request.id, 'ACEITO')}
+                >
+                  Aceitar
+                </button>
+                <button
+                  type="button"
+                  disabled={request.payment_status !== 'PAGO' || request.status !== 'ACEITO'}
+                  onClick={() => updateRequest(request.id, 'EM_ANDAMENTO')}
+                >
+                  Iniciar
+                </button>
+                <button
+                  type="button"
+                  disabled={request.payment_status !== 'PAGO' || request.status !== 'EM_ANDAMENTO'}
+                  onClick={() => updateRequest(request.id, 'CONCLUIDO')}
+                >
+                  Concluir
+                </button>
+                {request.status === 'CANCELADO' && (
                   <button type="button" onClick={() => deleteRequest(request.id)}>
                     <Trash2 size={16} /> Excluir
                   </button>
@@ -1748,6 +2031,10 @@ function ProviderDashboard({ view }) {
 
       {view === 'finance' && (
         <ProviderFinanceDashboard requests={requests} totals={financeTotals} subscription={planInfo.subscription} />
+      )}
+
+      {view === 'boletos' && (
+        <BoletoDashboard requests={requests} billings={planInfo.billings} />
       )}
 
       {view === 'plans' && (
@@ -1879,10 +2166,15 @@ function ProviderFinanceDashboard({ requests, totals, subscription }) {
 function ProviderPlansDashboard({ planInfo, onChanged }) {
   const [message, setMessage] = useState('');
   const [loadingPlan, setLoadingPlan] = useState(null);
+  const [selectedPlanId, setSelectedPlanId] = useState(null);
   const subscription = planInfo.subscription;
+  const pendingPlanIds = new Set((planInfo.billings || []).filter((billing) => billing.status === 'PENDENTE').map((billing) => billing.plan_id));
+  const pendingBilling = (planInfo.billings || []).find((billing) => billing.status === 'PENDENTE');
+  const lockedPlanId = pendingBilling?.plan_id ?? selectedPlanId;
   const usageCount = Number(planInfo.usage?.services_count || 0);
   const usageLimit = subscription?.max_services;
   const usageLabel = usageLimit === null || usageLimit === undefined ? `${usageCount} publicados` : `${usageCount} de ${usageLimit} servicos`;
+  const selectedPlan = planInfo.plans.find((plan) => plan.id === selectedPlanId);
 
   async function subscribe(planId) {
     setMessage('');
@@ -1894,6 +2186,24 @@ function ProviderPlansDashboard({ planInfo, onChanged }) {
         body: JSON.stringify({ planId })
       });
       setMessage(result.message);
+      setSelectedPlanId(null);
+      await onChanged();
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setLoadingPlan(null);
+    }
+  }
+
+  async function cancelPendingPlan() {
+    if (!pendingBilling) return;
+    setMessage('');
+    setLoadingPlan(pendingBilling.plan_id);
+
+    try {
+      const result = await api(`/plans/billing/${pendingBilling.id}/cancel`, { method: 'PATCH' });
+      setMessage(result.message);
+      setSelectedPlanId(null);
       await onChanged();
     } catch (error) {
       setMessage(error.message);
@@ -1959,13 +2269,34 @@ function ProviderPlansDashboard({ planInfo, onChanged }) {
           </div>
         </div>
 
+        {selectedPlan && (
+          <div className="plan-selection-bar">
+            <div>
+              <span className="eyebrow"><CheckCircle2 size={16} /> Plano selecionado</span>
+              <strong>{selectedPlan.name}</strong>
+              <small>{currency.format(selectedPlan.monthly_price)} por mes</small>
+            </div>
+            <div className="plan-selection-actions">
+              <button type="button" onClick={() => setSelectedPlanId(null)}>Trocar plano</button>
+              <button className="primary" type="button" disabled={loadingPlan === selectedPlan.id} onClick={() => subscribe(selectedPlan.id)}>
+                {loadingPlan === selectedPlan.id ? 'Gerando boleto...' : Number(selectedPlan.monthly_price) > 0 ? 'Confirmar e gerar boleto' : 'Confirmar plano gratuito'}
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="plans-grid">
           {planInfo.plans.map((plan) => {
             const isCurrent = subscription?.id === plan.id;
+            const isSelected = selectedPlanId === plan.id;
+            const exceedsServiceLimit = plan.max_services !== null && plan.max_services !== undefined && usageCount > Number(plan.max_services);
+            const hasPendingBilling = pendingPlanIds.has(plan.id);
+            const isPendingPlan = pendingBilling?.plan_id === plan.id;
+            const blockedByPendingPlan = lockedPlanId && lockedPlanId !== plan.id;
             return (
-              <article className={`plan-card ${isCurrent ? 'selected' : ''}`} key={plan.id}>
+              <article className={`plan-card ${isCurrent ? 'chosen' : isSelected ? 'selected' : isPendingPlan ? 'pending' : ''}`} key={plan.id}>
                 <div className="plan-card-head">
-                  <span>{isCurrent ? 'Plano atual' : 'Disponivel'}</span>
+                  <span>{isCurrent ? 'Plano atual' : isPendingPlan ? 'Aguardando pagamento' : isSelected ? 'Selecionado' : blockedByPendingPlan ? 'Indisponivel' : 'Disponivel'}</span>
                   <StatusBadge value={plan.is_active ? 'ATIVO' : 'PAUSADO'} />
                 </div>
                 <h3>{plan.name}</h3>
@@ -1979,8 +2310,10 @@ function ProviderPlansDashboard({ planInfo, onChanged }) {
                   <span><BriefcaseBusiness size={16} /> {formatPlanLimit(plan.max_services)}</span>
                   <span><ShieldCheck size={16} /> {plan.support_level}</span>
                 </div>
-                <button className={isCurrent ? 'ghost' : 'primary'} type="button" disabled={isCurrent || loadingPlan === plan.id} onClick={() => subscribe(plan.id)}>
-                  {loadingPlan === plan.id ? 'Atualizando...' : isCurrent ? 'Plano selecionado' : 'Assinar plano'}
+                {exceedsServiceLimit && <small className="plan-warning">Limite de {plan.max_services} servicos. Voce usa {usageCount}.</small>}
+                {hasPendingBilling && <small className="plan-pending">Plano selecionado. Aguardando confirmacao do pagamento.</small>}
+                <button className={isPendingPlan ? 'danger' : isCurrent ? 'primary selected-plan-button' : isSelected ? 'ghost' : exceedsServiceLimit || blockedByPendingPlan ? 'ghost' : 'primary'} type="button" disabled={isCurrent || exceedsServiceLimit || blockedByPendingPlan || (hasPendingBilling && loadingPlan === plan.id)} onClick={isPendingPlan ? cancelPendingPlan : () => setSelectedPlanId(plan.id)}>
+                  {isPendingPlan ? (loadingPlan === plan.id ? 'Cancelando...' : 'Cancelar plano') : isCurrent ? 'Plano atual' : isSelected ? 'Selecionado' : exceedsServiceLimit ? 'Indisponivel para seu uso' : blockedByPendingPlan ? 'Indisponivel enquanto houver plano selecionado' : 'Selecionar plano'}
                 </button>
               </article>
             );
@@ -2091,6 +2424,7 @@ function ProviderPayoutDashboard({ payoutInfo, onChanged }) {
               Metodo
               <select value={withdrawForm.method} onChange={(event) => setWithdrawForm((current) => ({ ...current, method: event.target.value }))}>
                 <option value="PIX">PIX</option>
+                <option value="BOLETO">Boleto</option>
                 <option value="CONTA_BANCARIA">Conta bancaria</option>
               </select>
             </label>
@@ -2113,6 +2447,7 @@ function ProviderPayoutDashboard({ payoutInfo, onChanged }) {
             Tipo de saque
             <select value={accountForm.payoutMethod} onChange={(event) => updateAccount('payoutMethod', event.target.value)}>
               <option value="PIX">PIX</option>
+                <option value="BOLETO">Boleto</option>
               <option value="CONTA_BANCARIA">Conta bancaria</option>
             </select>
           </label>
@@ -2247,16 +2582,18 @@ function AdminDashboard({ view }) {
   const [users, setUsers] = useState([]);
   const [categories, setCategories] = useState([]);
   const [withdrawals, setWithdrawals] = useState([]);
+  const [planBilling, setPlanBilling] = useState([]);
   const [planSummary, setPlanSummary] = useState({ plans: [], totals: { active_subscriptions: 0, monthly_recurring_revenue: 0, active_plans: 0 } });
   const [message, setMessage] = useState('');
 
   async function load() {
-    const [overviewData, requestRows, transactionRows, withdrawalRows, planRows, userRows, categoryRows] = await Promise.all([
+    const [overviewData, requestRows, transactionRows, withdrawalRows, planRows, billingRows, userRows, categoryRows] = await Promise.all([
       api('/admin/overview'),
       api('/admin/requests'),
       api('/admin/transactions'),
       api('/admin/withdrawals'),
       api('/plans/admin/summary'),
+      api('/admin/plan-billing'),
       api('/admin/users'),
       api('/categories')
     ]);
@@ -2265,6 +2602,7 @@ function AdminDashboard({ view }) {
     setTransactions(transactionRows);
     setWithdrawals(withdrawalRows);
     setPlanSummary(planRows);
+    setPlanBilling(billingRows);
     setUsers(userRows);
     setCategories(categoryRows);
   }
@@ -2296,6 +2634,14 @@ function AdminDashboard({ view }) {
 
   async function updateWithdrawalStatus(id, status) {
     await api(`/admin/withdrawals/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status })
+    });
+    await load();
+  }
+
+  async function updatePlanBillingStatus(id, status) {
+    await api(`/admin/plan-billing/${id}/status`, {
       method: 'PATCH',
       body: JSON.stringify({ status })
     });
@@ -2412,6 +2758,16 @@ function AdminDashboard({ view }) {
         />
       )}
 
+      {view === 'boletos' && (
+        <BoletoDashboard
+          requests={requests}
+          billings={planBilling}
+          admin
+          onConfirmPayment={confirmPayment}
+          onBillingStatusChange={updatePlanBillingStatus}
+        />
+      )}
+
       {view === 'withdrawals' && (
         <AdminWithdrawalsDashboard withdrawals={withdrawals} onStatusChange={updateWithdrawalStatus} />
       )}
@@ -2423,7 +2779,7 @@ function AdminDashboard({ view }) {
       )}
 
       {view === 'plans' && (
-        <AdminPlansDashboard planSummary={planSummary} onChanged={load} />
+        <AdminPlansDashboard planSummary={planSummary} planBilling={planBilling} onChanged={load} onBillingStatusChange={updatePlanBillingStatus} />
       )}
 
       {view === 'users' && (
@@ -2768,7 +3124,7 @@ function AdminCategoriesDashboard({ categories, onChanged }) {
   );
 }
 
-function AdminPlansDashboard({ planSummary, onChanged }) {
+function AdminPlansDashboard({ planSummary, planBilling, onChanged, onBillingStatusChange }) {
   const [form, setForm] = useState({
     name: '',
     description: '',
@@ -2834,6 +3190,53 @@ function AdminPlansDashboard({ planSummary, onChanged }) {
   return (
     <>
       {message && <div className={message.includes('sucesso') ? 'notice' : 'error'}>{message}</div>}
+
+      <section className="section active-section">
+        <div className="section-heading">
+          <div>
+            <h2>Boletos de planos</h2>
+            <p>Confira as cobranças geradas e confirme ou cancele pagamentos de assinaturas.</p>
+          </div>
+        </div>
+
+        <div className="finance-table">
+          {planBilling.length === 0 ? (
+            <div className="empty">Nenhum boleto de plano encontrado.</div>
+          ) : (
+            planBilling.map((billing) => (
+              <article className="finance-row" key={billing.id}>
+                <div className="finance-row-main">
+                  <strong>{billing.plan_name}</strong>
+                  <span>{billing.user_name} - {billing.user_email}</span>
+                </div>
+                <div className="finance-values">
+                  <div>
+                    <span>Valor</span>
+                    <strong>{currency.format(billing.amount || 0)}</strong>
+                  </div>
+                  <div>
+                    <span>Vencimento</span>
+                    <strong>{formatCell('created_at', billing.due_date)}</strong>
+                  </div>
+                  <div>
+                    <span>Publico</span>
+                    <strong>{roles[billing.target_role]}</strong>
+                  </div>
+                </div>
+                <div className="finance-actions">
+                  <StatusBadge value={billing.status} />
+                  {billing.status === 'PENDENTE' && (
+                    <div className="card-actions">
+                      <button className="primary" type="button" onClick={() => onBillingStatusChange(billing.id, 'PAGO')}>Marcar pago</button>
+                      <button type="button" onClick={() => onBillingStatusChange(billing.id, 'CANCELADO')}>Cancelar</button>
+                    </div>
+                  )}
+                </div>
+              </article>
+            ))
+          )}
+        </div>
+      </section>
 
       <section className="finance-grid">
         <article className="finance-hero plans-hero">
@@ -3136,6 +3539,11 @@ function formatDateOnly(value) {
   return new Date(value).toLocaleDateString('pt-BR');
 }
 
+function formatBoletoLine(value) {
+  if (!value) return '';
+  return String(value).replace(/\s+/g, ' ').trim();
+}
+
 function formatTimeOnly(value) {
   if (!value) return '-';
   return new Date(value).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -3147,6 +3555,7 @@ function formatPaymentMethod(value) {
     CARTAO_CREDITO: 'Cartao de credito',
     CARTAO_DEBITO: 'Cartao de debito',
     DINHEIRO: 'Dinheiro',
+    BOLETO: 'Boleto',
     CONTA_BANCARIA: 'Conta bancaria'
   };
 
@@ -3179,13 +3588,36 @@ function uniqueById(rows) {
 export default function App() {
   const auth = useAuth();
   const theme = useTheme();
-  const [activeView, setActiveView] = useState(defaultViews.CLIENTE);
+  const [activeView, setActiveView] = useState(() => {
+    try {
+      const savedUser = JSON.parse(localStorage.getItem('user') || 'null');
+      if (!savedUser?.role || !navItems[savedUser.role]) return defaultViews.CLIENTE;
+      const savedView = localStorage.getItem(`activeView:${savedUser.role}`);
+      return navItems[savedUser.role].some((item) => item.id === savedView)
+        ? savedView
+        : defaultViews[savedUser.role];
+    } catch {
+      return defaultViews.CLIENTE;
+    }
+  });
 
   useEffect(() => {
-    if (auth.user) {
-      setActiveView(defaultViews[auth.user.role]);
-    }
+    if (!auth.user) return;
+    const allowedViews = navItems[auth.user.role] || [];
+    const savedView = localStorage.getItem(`activeView:${auth.user.role}`);
+    const nextView = allowedViews.some((item) => item.id === savedView)
+      ? savedView
+      : defaultViews[auth.user.role] || defaultViews.CLIENTE;
+    setActiveView(nextView);
   }, [auth.user?.role]);
+
+  function navigate(view) {
+    if (!auth.user) return;
+    const allowed = navItems[auth.user.role]?.some((item) => item.id === view);
+    if (!allowed) return;
+    localStorage.setItem(`activeView:${auth.user.role}`, view);
+    setActiveView(view);
+  }
 
   if (!auth.user) {
     return <LoginScreen onLogin={auth.saveSession} theme={theme.theme} onToggleTheme={theme.toggleTheme} />;
@@ -3196,7 +3628,7 @@ export default function App() {
       user={auth.user}
       theme={theme.theme}
       activeView={activeView}
-      onNavigate={setActiveView}
+      onNavigate={navigate}
       onToggleTheme={theme.toggleTheme}
       onLogout={auth.logout}
     >

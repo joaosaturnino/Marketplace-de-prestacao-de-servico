@@ -63,6 +63,9 @@ router.post('/:requestId', authenticate, async (req, res, next) => {
     if (!text) {
       return res.status(400).json({ message: 'Digite uma mensagem.' });
     }
+    if (text.length > 4000) {
+      return res.status(400).json({ message: 'A mensagem deve ter no maximo 4000 caracteres.' });
+    }
 
     const request = await getRequestAccess(req.params.requestId, req.user);
 
